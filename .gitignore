@@ -78,3 +78,5 @@ frontend/pin-frontend/sift/*.cc
 sift/recorder/sift/*.h
 sift/recorder/sift/*.cc
 testing/test_results/
+mimicos/build/
+pin-tool-log.txt
