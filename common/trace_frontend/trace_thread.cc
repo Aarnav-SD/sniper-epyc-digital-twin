@@ -532,6 +532,7 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
    instruction->setSize(inst.sinst->size);
    instruction->setAtomic(dec_inst.is_atomic());
    instruction->setDisassembly(dec_inst.disassembly_to_str().c_str());
+   instruction->setDynamic(false);
    
    const std::vector<const MicroOp*> *uops = InstructionDecoder::decode(inst.sinst->addr, &dec_inst, instruction);
    instruction->setMicroOps(uops);
