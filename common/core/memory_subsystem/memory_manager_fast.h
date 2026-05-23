@@ -19,6 +19,7 @@ class MemoryManagerFast : public MemoryManagerBase
       virtual ~MemoryManagerFast() {}
 
       HitWhere::where_t coreInitiateMemoryAccess(
+            IntPtr eip,
             MemComponent::component_t mem_component,
             Core::lock_signal_t lock_signal,
             Core::mem_op_t mem_op_type,
@@ -53,11 +54,15 @@ class MemoryManagerFast : public MemoryManagerBase
       UInt64 getCacheBlockSize() const { return CACHE_LINE_SIZE; }
       #endif
 
-      void sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, core_id_t receiver, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, HitWhere::where_t where = HitWhere::UNKNOWN, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS) { assert(false); }
+      void sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, core_id_t receiver, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, HitWhere::where_t where = HitWhere::UNKNOWN, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS, CacheBlockInfo::block_type_t block_type = CacheBlockInfo::block_type_t::DATA) { assert(false); }
       void broadcastMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS) { assert(false); }
 
       SubsecondTime getL1HitLatency(void) { return SubsecondTime::Zero(); }
       void addL1Hits(bool icache, Core::mem_op_t mem_op_type, UInt64 hits) {}
+
+      void measureNucaStats() {}
+      NucaCache *getNucaCache() { return NULL; }
+      Cache *getCache(MemComponent::component_t mem_component) { return NULL; }
 };
 
 #endif // __MEMORY_MANAGER_FAST_H

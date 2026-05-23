@@ -23,6 +23,9 @@ class HitWhere
          DRAM,
          DRAM_LOCAL,
          DRAM_REMOTE,
+         CXL_NEAR,
+         CXL_FAR,
+         CXL_POOLED,
          CACHE_REMOTE,
          SIBLING,
          L1_SIBLING = MemComponent::L1_DCACHE + SIBLING,
@@ -32,6 +35,8 @@ class HitWhere
          UNKNOWN,
          PREDICATE_FALSE, // CMOV for which the predicate was false, did not actually execute
          PREFETCH_NO_MAPPING,
+         SHADOW_CACHE,
+         PAGE_FAULT,
          NUM_HITWHERES
       };
 };

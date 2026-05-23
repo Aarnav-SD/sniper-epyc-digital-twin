@@ -1,0 +1,134 @@
+# Sniper Upstream Test Configurations
+# =====================================
+# Smoke tests and sweeps for the MMU + memory management stack.
+# Usage:
+#   python3 create_experiments.py \
+#     --artifact-path <path-to-snipersim-parent> \
+#     --yaml testing/test_config.yaml \
+#     --suite <suite_name> \
+#     --suite-dir-name <output_name>
+
+# ── Traces ──────────────────────────────────────────────────────────────────
+trace_suite:
+  smoke:
+    tracelist_base_path: "traces/"
+    tracelists:
+      - smoke_test.tlist
+
+  smoke_sift:
+    tracelist_base_path: "traces/"
+    tracelists:
+      - smoke_sift.tlist
+
+# ── Configs ─────────────────────────────────────────────────────────────────
+configs:
+  configs_base_path: "../config/address_translation_schemes/"
+
+  # ── (i) Baseline with reserve_thp, frag=0.0 (full fragmentation → all 4KB) ──
+  baseline-frag0:
+    name: "baseline-frag0.0"
+    file: "baseline.cfg"
+    extends:
+      - "--perf_model/reserve_thp/target_fragmentation=0.0"
+    description: "Baseline MMU with reserve_thp, full fragmentation (no large pages)"
+
+  # ── (i) Same but with detailed telemetry enabled ──
+  # NOTE: For per-access CSV logs, rebuild with ENABLE_MMU_CSV_LOGS=1 in
+  # include/debug_config.h.  The --genstats flag (already in create_experiments.py)
+  # always writes aggregate MMU stats to sim.stats (mmu_walker.*, tlb.*, etc.).
+  baseline-frag0-telemetry:
+    name: "baseline-frag0.0-telemetry"
+    file: "baseline.cfg"
+    extends:
+      - "--perf_model/reserve_thp/target_fragmentation=0.0"
+    description: "Baseline MMU with reserve_thp, frag=0.0 (rebuild with ENABLE_MMU_CSV_LOGS=1 for per-access CSV)"
+
+  # ── (ii) Fragmentation sweep ──
+  fragmentation-sweep:
+    name: "frag-sweep"
+    file: "baseline.cfg"
+    sweeps:
+      - identifier: ["frag"]
+        option: ["--perf_model/reserve_thp/target_fragmentation="]
+        values: [[0.0, 0.25, 0.5, 0.75, 1.0]]
+    description: "Reserve THP fragmentation sweep: 0% → 100% large page availability"
+
+  # ── Baseline with frag=1.0 (no fragmentation → all large pages) ──
+  baseline-frag1:
+    name: "baseline-frag1.0"
+    file: "baseline.cfg"
+    extends:
+      - "--perf_model/reserve_thp/target_fragmentation=1.0"
+    description: "Baseline MMU with reserve_thp, no fragmentation (max large pages)"
+
+  # ── Userspace MimicOS baseline ──
+  userspace-baseline-frag0:
+    name: "userspace-frag0.0"
+    file: "userspace_baseline.cfg"
+    extends:
+      - "--perf_model/reserve_thp/target_fragmentation=0.0"
+    description: "Userspace MimicOS, reserve_thp, full fragmentation"
+
+  userspace-baseline-frag1:
+    name: "userspace-frag1.0"
+    file: "userspace_baseline.cfg"
+    extends:
+      - "--perf_model/reserve_thp/target_fragmentation=1.0"
+    description: "Userspace MimicOS, reserve_thp, no fragmentation"
+
+
+# ── Experiment Suites ───────────────────────────────────────────────────────
+experiment_suites:
+  # (i) Basic smoke test: MMU correctness with frag=0.0
+  smoke_test:
+    configs:
+      - baseline-frag0
+    trace_suite: smoke
+    instruction_count: 10000000
+    description: "Quick 10M-instr smoke test with baseline MMU + frag=0.0"
+
+  # (i) MMU with detailed telemetry
+  mmu_telemetry:
+    configs:
+      - baseline-frag0-telemetry
+    trace_suite: smoke
+    instruction_count: 10000000
+    description: "MMU telemetry test: CSV logs for TLB, PTW, page fault stats"
+
+  # (ii) Fragmentation sweep
+  fragmentation_sweep:
+    configs:
+      - fragmentation-sweep
+    trace_suite: smoke
+    instruction_count: 10000000
+    description: "Sweep fragmentation 0.0 → 1.0 to validate THP promotion effects"
+
+  # Combined: all trace-driven configs at once
+  full_test:
+    configs:
+      - baseline-frag0
+      - baseline-frag0-telemetry
+      - baseline-frag1
+      - fragmentation-sweep
+    trace_suite: smoke
+    instruction_count: 10000000
+    description: "Full test suite: smoke + telemetry + frag sweep"
+
+  # Userspace MimicOS: runs MimicOS as a native pinned process
+  # Requires: mimicos/build/startup_mimicos (run 'make -C mimicos' first)
+  # Requires: SIFT traces with .sift.vma files
+  # NOTE: Currently the SDE recorder's synchronous Magic() call for
+  # SimStartProcess deadlocks before the Sniper SIFT reader enters
+  # its main loop. The app trace is never loaded. This needs the SDE
+  # recorder to be rebuilt with the updated sim_api.h magic command IDs.
+  userspace_mimicos_test:
+    configs:
+      - userspace-baseline-frag0
+      - userspace-baseline-frag1
+    trace_suite: smoke_sift
+    instruction_count: 1000000
+    userspace_mimicos: true
+    mimicos_binary: "mimicos/build/startup_mimicos"
+    mimicos_config: "mimicos/configs/reservethp_32GB.ini"
+    description: "Userspace MimicOS smoke test with SIFT trace"
+

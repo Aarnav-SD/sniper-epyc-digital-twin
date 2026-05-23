@@ -18,10 +18,15 @@ const char * HitWhereString(HitWhere::where_t where) {
       case HitWhere::DRAM:            return "dram";
       case HitWhere::DRAM_LOCAL:      return "dram-local";
       case HitWhere::DRAM_REMOTE:     return "dram-remote";
+      case HitWhere::CXL_NEAR:        return "cxl-near";
+      case HitWhere::CXL_FAR:         return "cxl-far";
+      case HitWhere::CXL_POOLED:      return "cxl-pooled";
       case HitWhere::CACHE_REMOTE:    return "cache-remote";
       case HitWhere::UNKNOWN:         return "unknown";
       case HitWhere::PREDICATE_FALSE: return "predicate-false";
       case HitWhere::PREFETCH_NO_MAPPING: return "prefetch-no-mapping";
+      case HitWhere::SHADOW_CACHE:    return "shadow-cache";
+      case HitWhere::PAGE_FAULT:      return "page-fault";
       default:                        return "????";
    }
 }

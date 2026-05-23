@@ -54,7 +54,7 @@ NucaCache::~NucaCache()
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-NucaCache::read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, bool count)
+NucaCache::read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, bool count, bool is_metadata)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
    perf->updateTime(now);
@@ -80,7 +80,7 @@ NucaCache::read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *pe
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-NucaCache::write(IntPtr address, Byte* data_buf, bool& eviction, IntPtr& evict_address, Byte* evict_buf, SubsecondTime now, bool count)
+NucaCache::write(IntPtr address, Byte* data_buf, bool& eviction, IntPtr& evict_address, Byte* evict_buf, SubsecondTime now, bool count, bool is_metadata)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
 
@@ -143,4 +143,16 @@ NucaCache::accessDataArray(Cache::access_t access, SubsecondTime t_start, ShmemP
    perf->updateTime(t_start + queue_delay + m_data_access_time.getLatency(), ShmemPerf::NUCA_DATA);
 
    return queue_delay + m_data_access_time.getLatency();
+}
+
+void
+NucaCache::markTranslationMetadata(IntPtr address, CacheBlockInfo::block_type_t blocktype)
+{
+   m_cache->markMetadata(address, blocktype);
+}
+
+void
+NucaCache::measureStats()
+{
+   m_cache->measureStats();
 }
