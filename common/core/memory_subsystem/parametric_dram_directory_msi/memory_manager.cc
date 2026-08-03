@@ -57,6 +57,7 @@ namespace ParametricDramDirectoryMSI
 																					   m_dram_cache(NULL),
 																					   m_dram_directory_cntlr(NULL),
 																					   m_dram_cntlr(NULL),
+																					   m_tag_directory_present(false),
 																					   m_dram_cntlr_present(false)
 
 	{
@@ -226,6 +227,20 @@ namespace ParametricDramDirectoryMSI
 		std::vector<core_id_t> core_list_with_tag_directories;
 		String tag_directory_locations = Sim()->getCfg()->getString("perf_model/dram_directory/locations");
 
+		std::cout
+			<< "[DEBUG LLC PARAM] core=" << getCore()->getId()
+			<< " cache_levels="
+			<< Sim()->getCfg()->getInt("perf_model/cache/levels")
+			<< " last_level=" << static_cast<int>(m_last_level_cache)
+			<< " shared_cores="
+			<< cache_parameters[m_last_level_cache].shared_cores
+			<< " cfg_shared_cores="
+			<< Sim()->getCfg()->getIntArray(
+				"perf_model/l3_cache/shared_cores",
+				getCore()->getId())
+			<< " locations=" << tag_directory_locations
+			<< std::endl;
+
 		if (tag_directory_locations == "dram")
 		{
 			// Place tag directories only at DRAM controllers
@@ -253,6 +268,18 @@ namespace ParametricDramDirectoryMSI
 			{
 				core_list_with_tag_directories.push_back(core_id);
 			}
+
+			std::cout
+				<< "[DEBUG DIRECTORY LIST] core="
+				<< getCore()->getId()
+				<< " directory_cores=";
+
+			for (const auto directory_core : core_list_with_tag_directories)
+			{
+				std::cout << directory_core << " ";
+			}
+
+			std::cout << std::endl;
 		}
 
 		m_tag_directory_home_lookup = new AddressHomeLookup(dram_directory_home_lookup_param, core_list_with_tag_directories, getCacheBlockSize());
@@ -381,6 +408,14 @@ namespace ParametricDramDirectoryMSI
 				cache_parameters[(MemComponent::component_t)i].data_access_time,
 				cache_parameters[(MemComponent::component_t)i].tags_access_time);
 
+		std::cout
+			<< "[DEBUG BOOL] core=" << getCore()->getId()
+			<< " tag_present=" << m_tag_directory_present
+			<< " dram_present=" << m_dram_cntlr_present
+			<< " isMaster="
+			<< m_cache_cntlrs[m_last_level_cache]->isMasterCache()
+			<< std::endl;
+
 		if (m_dram_cntlr_present)
 			LOG_ASSERT_ERROR(m_cache_cntlrs[m_last_level_cache]->isMasterCache() == true,
 							 "DRAM controllers may only be at 'master' node of shared caches\n"
@@ -388,6 +423,7 @@ namespace ParametricDramDirectoryMSI
 							 "Make sure perf_model/dram/controllers_interleaving is a multiple of perf_model/l%d_cache/shared_cores\n",
 							 Sim()->getCfg()->getInt("perf_model/cache/levels"));
 		if (m_tag_directory_present)
+			
 			LOG_ASSERT_ERROR(m_cache_cntlrs[m_last_level_cache]->isMasterCache() == true,
 							 "Tag directories may only be at 'master' node of shared caches\n"
 							 "\n"

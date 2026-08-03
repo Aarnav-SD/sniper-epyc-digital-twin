@@ -644,6 +644,8 @@ namespace ParametricDramDirectoryMSI
 		LOG_ASSERT_ERROR((ca_address & (getCacheBlockSize() - 1)) == 0, "address at cache line + %x", ca_address & (getCacheBlockSize() - 1));
 		LOG_ASSERT_ERROR(offset + data_length <= getCacheBlockSize(), "access until %u > %u", offset + data_length, getCacheBlockSize());
 
+bool wake_network_after_unlock = false;
+
 #ifdef PRIVATE_L2_OPTIMIZATION
 		/* if this is the second part of an atomic operation: we already have the lock, don't lock again */
 		if (lock_signal != Core::UNLOCK)
@@ -908,16 +910,23 @@ namespace ParametricDramDirectoryMSI
 #ifdef PRIVATE_L2_OPTIMIZATION
 				releaseLock(ca_address);
 #else
+				MYLOG("USER releasing stack lock @ %lx", ca_address);
 				releaseStackLock(ca_address);
 #endif
+				MYLOG("USER waiting for network @ %lx", ca_address);
 				waitForNetworkThread();
 
 				MYLOG("processMemOpFromCore l%d postwakeup", m_mem_component);
-
-				// acquireStackLock(ca_address);
+				
+				MYLOG("USER acquiring reply stack lock @ %lx", ca_address);
+				acquireStackLock(ca_address);
 				//  Pass stack lock through from network thread
 
-				wakeUpNetworkThread();
+				// MYLOG("USER acquired stack lock @ %lx", ca_address);
+				// wakeUpNetworkThread();
+				// MYLOG("USER woke network @ %lx", ca_address);
+
+				wake_network_after_unlock = true;
 				MYLOG("processMemOpFromCore l%d got message reply", m_mem_component);
 
 				/* have the next cache levels fill themselves with the new data */
@@ -951,11 +960,11 @@ namespace ParametricDramDirectoryMSI
 
 				cache_block_info = getCacheBlockInfo(ca_address);
 
-#ifdef PRIVATE_L2_OPTIMIZATION
-#else
-				if (!lock_all)
-					releaseStackLock(ca_address, true);
-#endif
+// #ifdef PRIVATE_L2_OPTIMIZATION
+// #else
+				// if (!lock_all)
+					// releaseStackLock(ca_address, true);
+// #endif
 
 				LOG_ASSERT_ERROR(operationPermissibleinCache(ca_address, mem_op_type),
 								 "Expected %x to be valid in L1", ca_address);
@@ -992,6 +1001,24 @@ namespace ParametricDramDirectoryMSI
 				// do access cache only if L1 is not a passthrough cache
 				accessCache(mem_op_type, ca_address, offset, data_buf, data_length, hit_where == HitWhere::where_t(m_mem_component) && count);
 			}
+			
+			#ifndef PRIVATE_L2_OPTIMIZATION
+			/*
+			* A first-level miss upgraded the per-core shared lock to the complete
+			* stack lock at acquireStackLock(ca_address, true).
+			*
+			* Downgrade even when metadata passthrough skipped the data-copy block.
+			* The final cleanup later releases the remaining per-core shared lock.
+			*/
+			if (!lock_all)
+			{
+				MYLOG(
+					"USER downgrading reply stack lock to shared @ %lx",
+					ca_address
+				);
+				releaseStackLock(ca_address, true);
+			}
+			#endif
 		}
 
 		MYLOG("access done");
@@ -1021,17 +1048,52 @@ namespace ParametricDramDirectoryMSI
 
 /* if this is the first part of an atomic operation: keep the lock(s) */
 #ifdef PRIVATE_L2_OPTIMIZATION
-			if (lock_signal != Core::LOCK)
-				releaseLock(ca_address);
+    if (lock_signal != Core::LOCK)
+    {
+        releaseLock(ca_address);
+
+        if (wake_network_after_unlock)
+        {
+            MYLOG(
+                "USER waking network after final unlock @ %lx",
+                ca_address
+            );
+
+            wakeUpNetworkThread();
+            wake_network_after_unlock = false;
+        }
+    }
 #else
-			if (lock_signal != Core::LOCK)
-			{
-				if (lock_all)
-					releaseStackLock(ca_address);
-				else
-					releaseLock(ca_address);
-			}
+    if (lock_signal != Core::LOCK)
+    {
+        if (lock_all)
+            releaseStackLock(ca_address);
+        else
+            releaseLock(ca_address);
+		
+        /*
+         * At this point the user thread owns none of the PersetLocks.
+         * The network thread may now safely begin acquire_exclusive().
+         */
+        if (wake_network_after_unlock)
+        {
+            MYLOG(
+                "USER waking network after final unlock @ %lx",
+                ca_address
+            );
+
+            wakeUpNetworkThread();
+            wake_network_after_unlock = false;
+        }
+    }
 #endif
+
+	LOG_ASSERT_ERROR(
+			!wake_network_after_unlock,
+			"Network thread is still waiting after processMemOpFromCore; "
+			"miss handling with lock_signal == Core::LOCK requires a separate "
+			"handoff protocol"
+		);
 
 			if (mem_op_type == Core::WRITE)
 				stats.stores_where[block_type][hit_where]++;
@@ -2448,11 +2510,23 @@ namespace ParametricDramDirectoryMSI
 				MYLOG("wakeup user #%u", request->cache_cntlr->m_core_id);
 				request->cache_cntlr->updateUncoreStatistics(shmem_msg->getWhere(), t_here);
 
-				// releaseStackLock(address);
-				//  Pass stack lock through to user thread
+				// The network thread must release the stack lock before waking
+				// the user thread. pthread mutex ownership cannot be transferred
+				// implicitly between threads.
+				MYLOG("NETWORK releasing stack lock @ %lx", address);
+				releaseStackLock(address);
+				
+				MYLOG("NETWORK waking user @ %lx", address);
 				wakeUpUserThread(request->cache_cntlr->m_user_thread_sem);
+
+				MYLOG("NETWORK waiting for user @ %lx", address);
 				waitForUserThread(request->cache_cntlr->m_network_thread_sem);
+
+				// The user thread has finished the handoff phase.
+				// Reacquire the stack lock under the network thread's ownership.
+				MYLOG("NETWORK reacquiring stack lock @ %lx", address);
 				acquireStackLock(address);
+				MYLOG("NETWORK reacquired stack lock @ %lx", address);
 				// Use new simplified block types: DATA for regular data, PAGE_TABLE for metadata
 				if (request->block_type == CacheBlockInfo::block_type_t::DATA)
 				{
