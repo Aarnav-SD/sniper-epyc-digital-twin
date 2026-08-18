@@ -81,3 +81,12 @@ testing/test_results/
 mimicos/build/
 pin-tool-log.txt
 sift/recorder/obj-intel64/
+
+# Local HPC/NUMA validation benchmark binaries
+dram_distribution_test
+dram_stream_test
+numa_latency_test
+numa_local_remote_test
+shared_l3_8core_test
+shared_l3_test
+sniper_affinity_test

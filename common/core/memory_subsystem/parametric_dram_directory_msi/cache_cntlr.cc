@@ -2157,6 +2157,30 @@ bool wake_network_after_unlock = false;
 				{
 					// Send back the data also
 					MYLOG("evict FLUSH %lx", evict_address);
+
+					static UInt64 bad_evict_flush_count = 0;
+
+					if ((evict_address & (getCacheBlockSize() - 1)) != 0 &&
+						bad_evict_flush_count < 200)
+					{
+						fprintf(
+							stderr,
+							"[DEBUG BAD EVICT FLUSH REP] "
+							"core=%d home=%u "
+							"evict_address=0x%lx offset=0x%lx "
+							"state=%d block_type=%d\n",
+							m_core_id,
+							home_node_id,
+							(unsigned long)evict_address,
+							(unsigned long)(evict_address & (getCacheBlockSize() - 1)),
+							(int)evict_block_info.getCState(),
+							(int)evict_block_info.getBlockType()
+						);
+						fflush(stderr);
+
+						++bad_evict_flush_count;
+					}
+
 					// std::cout<<"Send Message from address: "<<std::hex<<address<<" evict flush\n";
 					getMemoryManager()->sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::FLUSH_REP,
 												MemComponent::LAST_LEVEL_CACHE, MemComponent::TAG_DIR,
@@ -2662,6 +2686,29 @@ bool wake_network_after_unlock = false;
 		IntPtr address = shmem_msg->getAddress();
 		IntPtr tag;
 		UInt32 set_index;
+
+		static UInt64 bad_flush_req_count = 0;
+
+		if ((address & (getCacheBlockSize() - 1)) != 0 &&
+			bad_flush_req_count < 200)
+		{
+			fprintf(
+				stderr,
+				"[DEBUG BAD FLUSH REQ INPUT] "
+				"core=%d sender=%d requester=%d "
+				"address=0x%lx offset=0x%lx "
+				"block_type=%d\n",
+				m_core_id,
+				sender,
+				shmem_msg->getRequester(),
+				(unsigned long)address,
+				(unsigned long)(address & (getCacheBlockSize() - 1)),
+				(int)shmem_msg->getBlockType()
+			);
+			fflush(stderr);
+
+			++bad_flush_req_count;
+		}
 
 		m_last_level->getCache()->splitAddress(address, tag, set_index);
 		MYLOG("processFlushReqFromDramDirectory l%d", m_mem_component);

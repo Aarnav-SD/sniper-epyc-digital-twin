@@ -112,6 +112,10 @@ public:
         , threshold_for_promotion(threshold_for_promotion)
         , m_num_numa_nodes(num_numa_nodes)
     {
+        stats.per_node_allocs = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
+        stats.per_node_2mb_reserved = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
+        stats.per_node_2mb_promoted = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
+        stats.per_node_spills = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
         // Initialize policy
         Policy::on_init(name, memory_size, kernel_size, threshold_for_promotion, this);
 
@@ -153,11 +157,12 @@ public:
         m_per_node_2mb_maps.resize(num_numa_nodes);
 
         // Initialize per-node stats
+        /*
         stats.per_node_allocs = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
         stats.per_node_2mb_reserved = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
         stats.per_node_2mb_promoted = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
         stats.per_node_spills = (UInt64*)calloc(num_numa_nodes, sizeof(UInt64));
-
+        */
         // Initialize per-node kernel bump pointers
         // Each node's kernel region occupies PFNs [base_pfn, base_pfn + kernel_pages).
         // Node 0: skip PFN 0 (reserved for root page table), start at PFN 1.

@@ -1076,6 +1076,28 @@ DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem
    IntPtr address = shmem_msg->getAddress();
    SubsecondTime now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD);
 
+   static UInt64 bad_flush_rep_count = 0;
+
+   if ((address & (getCacheBlockSize() - 1)) != 0 &&
+      bad_flush_rep_count < 200)
+   {
+      fprintf(
+         stderr,
+         "[DEBUG BAD FLUSH REP] "
+         "dir_core=%d sender=%d requester=%d "
+         "address=0x%lx offset=0x%lx block_type=%d\n",
+         m_core_id,
+         sender,
+         shmem_msg->getRequester(),
+         (unsigned long)address,
+         (unsigned long)(address & (getCacheBlockSize() - 1)),
+         (int)shmem_msg->getBlockType()
+      );
+      fflush(stderr);
+
+      ++bad_flush_rep_count;
+   }
+
    MYLOG("Start @ %lx", address);
 
    DirectoryEntry* directory_entry = m_dram_directory_cache->getDirectoryEntry(address);
@@ -1217,8 +1239,64 @@ DramDirectoryCntlr::sendDataToNUCA(IntPtr address, core_id_t requester, Byte* da
 
       if (eviction)
       {
+
+         LOG_ASSERT_ERROR(
+            (evict_address & (getCacheBlockSize() - 1)) == 0,
+            "NUCA generated unaligned eviction address 0x%lx",
+            (unsigned long)evict_address
+         );
          // Write data to Dram
          core_id_t dram_node = m_dram_controller_home_lookup->getHome(evict_address);
+         /*
+         LOG_PRINT(
+            "[DEBUG NUCA DRAM WRITE ROUTE] requester=%d address=0x%lx dram_node=%d",
+            m_core_id,
+            evict_address,
+            dram_node
+         );
+         
+         
+         static UInt64 bad_nuca_dram_write_count = 0;
+
+         if ((evict_address & (getCacheBlockSize() - 1)) != 0 &&
+            bad_nuca_dram_write_count < 200)
+         {
+            fprintf(
+               stderr,
+               "[DEBUG BAD NUCA DRAM WRITE] "
+               "dir_core=%d requester=%d "
+               "original_address=0x%lx "
+               "evict_address=0x%lx offset=0x%lx "
+               "dram_node=%d\n",
+               m_core_id,
+               requester,
+               (unsigned long)address,
+               (unsigned long)evict_address,
+               (unsigned long)(evict_address & (getCacheBlockSize() - 1)),
+               dram_node
+            );
+            fflush(stderr);
+
+            ++bad_nuca_dram_write_count;
+         }
+
+         static UInt64 zero_write_site_a_count = 0;
+
+         if (evict_address == 0 && zero_write_site_a_count < 200)
+         {
+            fprintf(
+               stderr,
+               "[DEBUG ZERO WRITE SITE A] "
+               "dir_core=%d requester=%d address=0x%lx\n",
+               m_core_id,
+               requester,
+               (unsigned long)evict_address
+            );
+            fflush(stderr);
+
+            ++zero_write_site_a_count;
+         }
+         */
 
          getMemoryManager()->sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::DRAM_WRITE_REQ,
                MemComponent::TAG_DIR, MemComponent::DRAM,
@@ -1248,9 +1326,69 @@ DramDirectoryCntlr::sendDataToDram(IntPtr address, core_id_t requester, Byte* da
    }
    else
    {
+      /*
+      if (address == 0)
+      {
+         fprintf(
+               stderr,
+               "[DEBUG ZERO FROM DIRECT DRAM] "
+               "dir_core=%d requester=%d\n",
+               m_core_id,
+               requester
+         );
+         fflush(stderr);
+      }
+      */
       // Write data to Dram
       core_id_t dram_node = m_dram_controller_home_lookup->getHome(address);
+      /*
+      LOG_PRINT(
+         "[DEBUG DRAM WRITE ROUTE] requester=%d address=0x%lx dram_node=%d",
+         requester,
+         address,
+         dram_node
+      );
+      
 
+      static UInt64 bad_direct_dram_write_count = 0;
+
+      if ((address & (getCacheBlockSize() - 1)) != 0 &&
+         bad_direct_dram_write_count < 200)
+      {
+         fprintf(
+            stderr,
+            "[DEBUG BAD DIRECT DRAM WRITE] "
+            "dir_core=%d requester=%d "
+            "address=0x%lx offset=0x%lx "
+            "dram_node=%d\n",
+            m_core_id,
+            requester,
+            (unsigned long)address,
+            (unsigned long)(address & (getCacheBlockSize() - 1)),
+            dram_node
+         );
+         fflush(stderr);
+
+         ++bad_direct_dram_write_count;
+      }
+
+      static UInt64 zero_write_site_b_count = 0;
+
+      if (address == 0 && zero_write_site_b_count < 200)
+      {
+         fprintf(
+            stderr,
+            "[DEBUG ZERO WRITE SITE B] "
+            "dir_core=%d requester=%d address=0x%lx\n",
+            m_core_id,
+            requester,
+            (unsigned long)address
+         );
+         fflush(stderr);
+
+         ++zero_write_site_b_count;
+      }
+      */
       getMemoryManager()->sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::DRAM_WRITE_REQ,
             MemComponent::TAG_DIR, MemComponent::DRAM,
             requester /* requester */,

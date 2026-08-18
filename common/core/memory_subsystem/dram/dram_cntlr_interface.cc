@@ -4,6 +4,7 @@
 #include "shmem_perf.h"
 #include "cache_block_info.h"
 #include "log.h"
+#include <cstdio>
 
 void DramCntlrInterface::handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2DramDirectoryMSI::ShmemMsg* shmem_msg)
 {
@@ -42,6 +43,8 @@ void DramCntlrInterface::handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2Dra
       case PrL1PrL2DramDirectoryMSI::ShmemMsg::DRAM_WRITE_REQ:
       {
          bool is_metadata_write = CacheBlockInfo::isMetadataBlockType(shmem_msg->getBlockType());
+
+
          putDataToDram(shmem_msg->getAddress(), shmem_msg->getRequester(), shmem_msg->getDataBuf(), msg_time, is_metadata_write);
 
          // DRAM latency is ignored on write

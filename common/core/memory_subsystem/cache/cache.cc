@@ -8,6 +8,7 @@
 #include <fstream>
 #include <tuple>
 #include <iomanip>
+#include <cstdio>
 
 // L2 set index logging
 #if DEBUG_L2_SET_INDEX >= DEBUG_BASIC
@@ -367,6 +368,25 @@ void Cache::insertSingleLine(IntPtr addr, Byte *fill_buff,
 	UInt32 set_index;
 	splitAddress(addr, tag, set_index);
 
+	static UInt64 zero_insert_debug_count = 0;
+
+	if (addr == 0 && zero_insert_debug_count < 200)
+	{
+		fprintf(
+			stderr,
+			"[DEBUG ZERO INSERT] "
+			"cache=%s addr=0x%lx set=%u block_type=%d cntlr=%p\n",
+			m_name.c_str(),
+			(unsigned long)addr,
+			set_index,
+			(int)btype,
+			(void*)cntlr
+		);
+		fflush(stderr);
+
+		++zero_insert_debug_count;
+	}
+
 	CacheBlockInfo *cache_block_info = CacheBlockInfo::create(m_cache_type);
 	cache_block_info->setTag(tag);
 	cache_block_info->setBlockType(btype);
@@ -384,14 +404,87 @@ void Cache::insertSingleLine(IntPtr addr, Byte *fill_buff,
 	{
 		m_sets[set_index]->insert(cache_block_info, fill_buff,
 								  eviction, evict_block_info, evict_buff, cntlr);
+
+		static UInt64 zero_evict_debug_count = 0;
+
+		if (*eviction &&
+			evict_block_info->getTag() == 0 &&
+			zero_evict_debug_count < 100)
+		{
+			fprintf(stderr,
+				"[DEBUG ZERO EVICT TAG] "
+				"cache=%s "
+				"insert_addr=0x%lx "
+				"insert_tag=0x%lx "
+				"set=%u "
+				"victim_tag=0x%lx "
+				"victim_state=%d\n",
+				m_name.c_str(),
+				(unsigned long)addr,
+				(unsigned long)tag,
+				set_index,
+				(unsigned long)evict_block_info->getTag(),
+				(int)evict_block_info->getCState());
+
+			++zero_evict_debug_count;
+		}
 	}
 
-	*evict_addr = tagToAddress(evict_block_info->getTag());
+	IntPtr victim_tag = evict_block_info->getTag();
+
+	*evict_addr = tagToAddress(victim_tag);
+
+	static UInt64 bad_reconstruct_count = 0;
+
+	if (*eviction &&
+		((*evict_addr & (m_blocksize - 1)) != 0) &&
+		bad_reconstruct_count < 200)
+	{
+		fprintf(
+			stderr,
+			"[DEBUG BAD EVICT RECONSTRUCT] "
+			"cache=%s "
+			"incoming=0x%lx "
+			"victim_tag=0x%lx "
+			"evict_addr=0x%lx "
+			"blocksize=%u "
+			"log_blocksize=%u "
+			"sets=%u\n",
+			m_name.c_str(),
+			(unsigned long)addr,
+			(unsigned long)victim_tag,
+			(unsigned long)*evict_addr,
+			m_blocksize,
+			m_log_blocksize,
+			m_num_sets
+		);
+
+		fflush(stderr);
+		++bad_reconstruct_count;
+	}
 
 
 	if ((*eviction) == true)
 	{
-
+		/*
+		if (*evict_addr == 0)
+		{
+			fprintf(
+				stderr,
+				"[DEBUG ZERO EVICTION] "
+				"cache=%s incoming=0x%lx "
+				"incoming_tag=0x%lx set=%u "
+				"victim_tag=0x%lx victim_state=%d\n",
+				m_name.c_str(),
+				(unsigned long)addr,
+				(unsigned long)tag,
+				set_index,
+				(unsigned long)evict_block_info->getTag(),
+				(int)evict_block_info->getCState()
+			);
+			fflush(stderr);
+		}
+		*/
 		int reuse_value = evict_block_info->getReuse();
 
 		// Simplified block types: DATA for regular data, PAGE_TABLE for all metadata types

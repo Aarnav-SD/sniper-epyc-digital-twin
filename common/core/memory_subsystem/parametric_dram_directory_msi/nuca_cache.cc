@@ -82,6 +82,12 @@ NucaCache::read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *pe
 boost::tuple<SubsecondTime, HitWhere::where_t>
 NucaCache::write(IntPtr address, Byte* data_buf, bool& eviction, IntPtr& evict_address, Byte* evict_buf, SubsecondTime now, bool count, bool is_metadata)
 {
+   // A NUCA hit performs no replacement.
+   // ALways initialize outputparameters so the caller cannot
+   // interpret stale stack contents as a real eviction.
+   eviction = false;
+   evict_address = 0;
+   
    HitWhere::where_t hit_where = HitWhere::MISS;
 
    PrL1CacheBlockInfo* block_info = (PrL1CacheBlockInfo*)m_cache->peekSingleLine(address);
