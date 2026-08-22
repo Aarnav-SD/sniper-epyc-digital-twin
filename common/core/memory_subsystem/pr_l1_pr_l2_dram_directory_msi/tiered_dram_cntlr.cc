@@ -20,63 +20,7 @@
 #include <cstring>
 #include "magic_server.h"
 #include "hooks_manager.h"
-/*
-static volatile int g_dram_numa_bench_phase = 0;
 
-static const UInt64 NUMA_MARK_FIRST_TOUCH_BEGIN = 0xE001;
-static const UInt64 NUMA_MARK_FIRST_TOUCH_END   = 0xE002;
-static const UInt64 NUMA_MARK_CHASE_BEGIN       = 0xE003;
-static const UInt64 NUMA_MARK_CHASE_END         = 0xE004;
-
-static SInt64
-numaDramBenchMarkerHook(UInt64 self, UInt64 data)
-{
-    MagicServer::MagicMarkerType *marker =
-        (MagicServer::MagicMarkerType *)data;
-
-    switch (marker->arg0)
-    {
-        case NUMA_MARK_FIRST_TOUCH_BEGIN:
-            g_dram_numa_bench_phase = 1;
-            fprintf(stderr,
-                "[DEBUG DRAM PHASE] FIRST_TOUCH_BEGIN "
-                "core=%d thread=%d\n",
-                marker->core_id,
-                marker->thread_id);
-            break;
-
-        case NUMA_MARK_FIRST_TOUCH_END:
-            g_dram_numa_bench_phase = 0;
-            fprintf(stderr,
-                "[DEBUG DRAM PHASE] FIRST_TOUCH_END "
-                "core=%d thread=%d\n",
-                marker->core_id,
-                marker->thread_id);
-            break;
-
-        case NUMA_MARK_CHASE_BEGIN:
-            g_dram_numa_bench_phase = 2;
-            fprintf(stderr,
-                "[DEBUG DRAM PHASE] CHASE_BEGIN "
-                "core=%d thread=%d\n",
-                marker->core_id,
-                marker->thread_id);
-            break;
-
-        case NUMA_MARK_CHASE_END:
-            g_dram_numa_bench_phase = 0;
-            fprintf(stderr,
-                "[DEBUG DRAM PHASE] CHASE_END "
-                "core=%d thread=%d\n",
-                marker->core_id,
-                marker->thread_id);
-            break;
-    }
-
-    fflush(stderr);
-    return 0;
-}
-*/
 // Helper functions for safe config access
 static SInt64 getCfgIntSafe(const String& key, SInt64 default_val)
 {
@@ -118,16 +62,8 @@ TieredDramCntlr::TieredDramCntlr(MemoryManagerBase* memory_manager,
 {
     // Initialize the memory tiers from config
     initializeTiers(m_core_id, cache_block_size, address_home_lookup);
-    /*
-    if (m_core_id == 0)
-    {
-        Sim()->getHooksManager()->registerHook(
-            HookType::HOOK_MAGIC_MARKER,
-            numaDramBenchMarkerHook,
-            0
-        );
-    }
-    */
+
+    
     // NUMA-only mode: when NUMA is enabled but CXL is not, disable complex tiering
     bool cxl_enabled = getCfgBoolSafe("perf_model/cxl/enabled", false);
     bool numa_only = getCfgBoolSafe("perf_model/dram/numa/enabled", false) && !cxl_enabled;
@@ -395,132 +331,6 @@ TieredDramCntlr::runTieredDramPerfModel(core_id_t requester, SubsecondTime time,
     if (m_numa_enabled)
     {
         UInt32 numa_node = getNumaNodeForAddress(address);
-        /*
-        static UInt64 dbg_chase_dram = 0;
-
-        if (g_dram_numa_bench_phase == 2 &&
-            dbg_chase_dram < 200)
-        {
-            ++dbg_chase_dram;
-
-            UInt32 requester_node = getNumaNodeForCore(requester);
-            bool is_local = (requester_node == numa_node);
-
-            fprintf(stderr,
-                "[DEBUG CHASE DRAM] "
-                "controller=%d "
-                "requester=%d requester_node=%u "
-                "address=0x%lx ppn=%lu "
-                "selected_node=%u local=%d\n",
-                m_core_id,
-                requester,
-                requester_node,
-                (unsigned long)address,
-                (unsigned long)(((UInt64)address) >> 12),
-                numa_node,
-                is_local ? 1 : 0);
-
-            fflush(stderr);
-        }
-
-        static UInt64 debug_req0_node1 = 0;
-
-        if (requester == 0 &&
-            numa_node == 1 &&
-            debug_req0_node1 < 100)
-        {
-            ++debug_req0_node1;
-
-            UInt32 requester_node = getNumaNodeForCore(requester);
-            bool is_local = (requester_node == numa_node);
-
-            fprintf(stderr,
-                "[DEBUG REMOTE0] "
-                "controller=%d requester=%d "
-                "requester_node=%u "
-                "address=0x%lx ppn=%lu "
-                "selected_node=%u local=%d\n",
-                m_core_id,
-                requester,
-                requester_node,
-                (unsigned long)address,
-                (unsigned long)(((UInt64)address) >> 12),
-                numa_node,
-                is_local ? 1 : 0);
-
-            fflush(stderr);
-        }
-
-        static UInt64 debug_req0 = 0;
-        static UInt64 debug_req64 = 0;
-        static UInt64 debug_node1 = 0;
-        static UInt64 debug_unmapped = 0;
-
-        UInt64 ppn = ((UInt64)address) >> 12;
-
-        bool mapped = false;
-        for (UInt32 n = 0; n < m_num_numa_nodes; ++n)
-        {
-            if (ppn >= m_numa_nodes[n].start_pfn &&
-                ppn <  m_numa_nodes[n].end_pfn)
-            {
-                mapped = true;
-                break;
-            }
-        }
-
-        bool print = false;
-
-        if (requester == 0 && debug_req0 < 30)
-        {
-            ++debug_req0;
-            print = true;
-        }
-
-        if (requester == 64 && debug_req64 < 100)
-        {
-            ++debug_req64;
-            print = true;
-        }
-
-        if (numa_node == 1 && debug_node1 < 300)
-        {
-            ++debug_node1;
-            print = true;
-        }
-
-        if (!mapped && debug_unmapped < 100)
-        {
-            ++debug_unmapped;
-            print = true;
-        }
-
-        if (print)
-        {
-            UInt32 requester_node = getNumaNodeForCore(requester);
-            bool is_local = (requester_node == numa_node);
-
-            fprintf(stderr,
-                "[DEBUG NUMA MAP] "
-                "controller=%d requester=%d requester_node=%u "
-                "address=0x%lx ppn=%lu "
-                "selected_node=%u local=%d mapped=%d "
-                "node0=[%lu,%lu) "
-                "node1=[%lu,%lu)\n",
-                m_core_id,
-                requester,
-                requester_node,
-                (unsigned long)address,
-                (unsigned long)ppn,
-                numa_node,
-                is_local ? 1 : 0,
-                mapped ? 1 : 0,
-                (unsigned long)m_numa_nodes[0].start_pfn,
-                (unsigned long)m_numa_nodes[0].end_pfn,
-                (unsigned long)m_numa_nodes[1].start_pfn,
-                (unsigned long)m_numa_nodes[1].end_pfn);
-        }
-        */
     
         if (numa_node < m_num_numa_nodes && m_numa_nodes[numa_node].perf_model)
         {

@@ -95,68 +95,6 @@ using namespace std;
  * 1 = first-touch phase
  * 2 = pointer-chase phase
  */
-static std::atomic<int> g_numa_bench_phase{0};
-
-static const UInt64 NUMA_MARK_FIRST_TOUCH_BEGIN = 0xE001;
-static const UInt64 NUMA_MARK_FIRST_TOUCH_END   = 0xE002;
-static const UInt64 NUMA_MARK_CHASE_BEGIN       = 0xE003;
-static const UInt64 NUMA_MARK_CHASE_END         = 0xE004;
-
-static SInt64
-numaBenchMarkerHook(UInt64 /*self*/, UInt64 data)
-{
-    MagicServer::MagicMarkerType *marker =
-        (MagicServer::MagicMarkerType *)data;
-
-    switch (marker->arg0)
-    {
-        case NUMA_MARK_FIRST_TOUCH_BEGIN:
-            g_numa_bench_phase = 1;
-            fprintf(stderr,
-                "[DEBUG BENCH PHASE] FIRST_TOUCH_BEGIN "
-                "marker_core=%d thread=%d arg1=%lu\n",
-                marker->core_id,
-                marker->thread_id,
-                (unsigned long)marker->arg1);
-            break;
-
-        case NUMA_MARK_FIRST_TOUCH_END:
-            g_numa_bench_phase = 0;
-            fprintf(stderr,
-                "[DEBUG BENCH PHASE] FIRST_TOUCH_END "
-                "marker_core=%d thread=%d arg1=%lu\n",
-                marker->core_id,
-                marker->thread_id,
-                (unsigned long)marker->arg1);
-            break;
-
-        case NUMA_MARK_CHASE_BEGIN:
-            g_numa_bench_phase = 2;
-            fprintf(stderr,
-                "[DEBUG BENCH PHASE] CHASE_BEGIN "
-                "marker_core=%d thread=%d arg1=%lu\n",
-                marker->core_id,
-                marker->thread_id,
-                (unsigned long)marker->arg1);
-            break;
-
-        case NUMA_MARK_CHASE_END:
-            g_numa_bench_phase = 0;
-            fprintf(stderr,
-                "[DEBUG BENCH PHASE] CHASE_END "
-                "marker_core=%d thread=%d arg1=%lu\n",
-                marker->core_id,
-                marker->thread_id,
-                (unsigned long)marker->arg1);
-            break;
-
-        default:
-            break;
-    }
-
-    fflush(stderr);
-    return 0;
-}
 
 namespace ParametricDramDirectoryMSI
 {
@@ -185,15 +123,7 @@ namespace ParametricDramDirectoryMSI
     {
         std::cout << std::endl;
         std::cout << "[MMU] Initializing MMU for core " << core->getId() << std::endl;
-        
-        if (core->getId() == 0)
-        {
-            Sim()->getHooksManager()->registerHook(
-                HookType::HOOK_MAGIC_MARKER,
-                numaBenchMarkerHook,
-                0
-            );
-        }
+
         // Initialize centralized logging
         mmu_log = new SimLog("MMU", core->getId(), DEBUG_MMU);
         mmu_log->log("Initializing MMU for core " + std::to_string(core->getId()));
@@ -503,28 +433,7 @@ namespace ParametricDramDirectoryMSI
             int app_id = core->getThread()->getAppId();
             PageTable *page_table = Sim()->getMimicOS()->getPageTable(app_id);
 
-            static UInt64 dbg_core0 = 0;
-            static UInt64 dbg_core64 = 0;
 
-            if ((core->getId() == 0 && dbg_core0 < 50) ||
-                (core->getId() == 64 && dbg_core64 < 50))
-            {
-                if (core->getId() == 0)
-                    ++dbg_core0;
-                else
-                    ++dbg_core64;
-
-                fprintf(stderr,
-                    "[DEBUG PERFECT TRANSLATION PATH MMU APP] core=%d thread=%d app=%d "
-                    "pt=%p VA=0x%lx\n",
-                    core->getId(),
-                    core->getThread()->getId(),
-                    app_id,
-                    (void*)page_table,
-                    (unsigned long)address);
-
-                fflush(stderr);
-            }
             
             // Use the zero-latency translation path from mmu_base
             auto [physical_address, page_size] = translateWithoutTiming(address, page_table);
@@ -593,29 +502,7 @@ namespace ParametricDramDirectoryMSI
         int app_id = core->getThread()->getAppId();
         PageTable *page_table = Sim()->getMimicOS()->getPageTable(app_id);
 
-        static UInt64 dbg_normal_core0 = 0;
-        static UInt64 dbg_normal_core64 = 0;
-
-        if ((core->getId() == 0  && dbg_normal_core0  < 50) ||
-            (core->getId() == 64 && dbg_normal_core64 < 50))
-        {
-            if (core->getId() == 0)
-                ++dbg_normal_core0;
-            else
-                ++dbg_normal_core64;
-
-            fprintf(stderr,
-                "[DEBUG MMU APP NORMAL] "
-                "core=%d thread=%d app=%d pt=%p VA=0x%lx\n",
-                core->getId(),
-                core->getThread()->getId(),
-                app_id,
-                (void*)page_table,
-                (unsigned long)address);
-
-            fflush(stderr);
-        }
-
+       
         // Get reference to TLB hierarchy (const ref avoids expensive vector copy)
         const TLBSubsystem& tlbs = tlb_subsystem->getTLBSubsystem();
 
@@ -1267,91 +1154,7 @@ namespace ParametricDramDirectoryMSI
         // Combine PPN and offset to form physical address
         // PPN is stored at 4KB granularity, so multiply by base page size
         IntPtr final_physical_address = (ppn_result * base_page_size_in_bytes) + offset;
-        /*
-        static UInt64 dbg_first_touch = 0;
-        static UInt64 dbg_chase = 0;
-
-        if (g_numa_bench_phase == 1 &&
-            core->getId() == 64 &&
-            dbg_first_touch < 100)
-        {
-            ++dbg_first_touch;
-
-            fprintf(stderr,
-                "[DEBUG BENCH VA2PA] "
-                "phase=FIRST_TOUCH "
-                "core=%d thread=%d "
-                "VA=0x%lx VPN=%lu "
-                "PPN=%lu PA=0x%lx\n",
-                core->getId(),
-                core->getThread()->getId(),
-                (unsigned long)address,
-                (unsigned long)(address >> 12),
-                (unsigned long)ppn_result,
-                (unsigned long)final_physical_address);
-
-            fflush(stderr);
-        }
-
-        if (g_numa_bench_phase == 2 &&
-            core->getId() == 0 &&
-            dbg_chase < 100)
-        {
-            ++dbg_chase;
-
-            fprintf(stderr,
-                "[DEBUG BENCH VA2PA] "
-                "phase=CHASE "
-                "core=%d thread=%d "
-                "VA=0x%lx VPN=%lu "
-                "PPN=%lu PA=0x%lx\n",
-                core->getId(),
-                core->getThread()->getId(),
-                (unsigned long)address,
-                (unsigned long)(address >> 12),
-                (unsigned long)ppn_result,
-                (unsigned long)final_physical_address);
-
-            fflush(stderr);
-        }
-        */
-        /*
-        // TEMP DEBUG: compare VA -> PA translation on cores 0 and 64
-        {
-            static UInt64 dbg_array_core0 = 0;
-            static UInt64 dbg_array_core64 = 0;
-
-            const IntPtr array_base = 0x791bf8a3e000ULL;
-            const IntPtr array_end  = 0x791bfca3e000ULL;
-
-            if (address >= array_base && address < array_end &&
-                ((core->getId() == 0  && dbg_array_core0  < 100) ||
-                (core->getId() == 64 && dbg_array_core64 < 100)))
-            {
-                if (core->getId() == 0)
-                    ++dbg_array_core0;
-                else
-                    ++dbg_array_core64;
-
-                fprintf(stderr,
-                    "[DEBUG ARRAY VA2PA] "
-                    "core=%d thread=%d "
-                    "VA=0x%lx VPN=%lu "
-                    "PPN=%lu PA=0x%lx "
-                    "page_size=%d offset=0x%lx\n",
-                    core->getId(),
-                    core->getThread()->getId(),
-                    (unsigned long)address,
-                    (unsigned long)(address >> 12),
-                    (unsigned long)ppn_result,
-                    (unsigned long)final_physical_address,
-                    page_size,
-                    (unsigned long)offset);
-
-                fflush(stderr);
-            }
-        }
-        */
+        
         mmu_log->debug("Physical Address: " + mmu_log->hex(final_physical_address) + 
                       " PPN: " + mmu_log->hex(ppn_result * base_page_size_in_bytes) + 
                       " Page Size: " + std::to_string(page_size) + " Offset: " + mmu_log->hex(offset));

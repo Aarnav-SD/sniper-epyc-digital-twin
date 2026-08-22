@@ -1075,7 +1075,7 @@ DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem
 {
    IntPtr address = shmem_msg->getAddress();
    SubsecondTime now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD);
-
+   /*
    static UInt64 bad_flush_rep_count = 0;
 
    if ((address & (getCacheBlockSize() - 1)) != 0 &&
@@ -1097,7 +1097,7 @@ DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem
 
       ++bad_flush_rep_count;
    }
-
+   */
    MYLOG("Start @ %lx", address);
 
    DirectoryEntry* directory_entry = m_dram_directory_cache->getDirectoryEntry(address);
@@ -1348,27 +1348,13 @@ DramDirectoryCntlr::sendDataToDram(IntPtr address, core_id_t requester, Byte* da
          address,
          dram_node
       );
-      
-
+      */
+      /*
       static UInt64 bad_direct_dram_write_count = 0;
 
       if ((address & (getCacheBlockSize() - 1)) != 0 &&
          bad_direct_dram_write_count < 200)
       {
-         fprintf(
-            stderr,
-            "[DEBUG BAD DIRECT DRAM WRITE] "
-            "dir_core=%d requester=%d "
-            "address=0x%lx offset=0x%lx "
-            "dram_node=%d\n",
-            m_core_id,
-            requester,
-            (unsigned long)address,
-            (unsigned long)(address & (getCacheBlockSize() - 1)),
-            dram_node
-         );
-         fflush(stderr);
-
          ++bad_direct_dram_write_count;
       }
 
@@ -1376,16 +1362,6 @@ DramDirectoryCntlr::sendDataToDram(IntPtr address, core_id_t requester, Byte* da
 
       if (address == 0 && zero_write_site_b_count < 200)
       {
-         fprintf(
-            stderr,
-            "[DEBUG ZERO WRITE SITE B] "
-            "dir_core=%d requester=%d address=0x%lx\n",
-            m_core_id,
-            requester,
-            (unsigned long)address
-         );
-         fflush(stderr);
-
          ++zero_write_site_b_count;
       }
       */
