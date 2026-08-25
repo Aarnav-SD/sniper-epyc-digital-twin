@@ -20,3 +20,4 @@
 | H-016 | REMOTE0 and REMOTE1 should be symmetric | VALIDATED | 51.58 vs 51.52 ns mixed averages |
 | H-017 | +40 ns is functionally applied to remote accesses | VALIDATED | code path + effective weighted totals |
 | H-018 | 40 ns matches real EPYC 7763 remote penalty | NOT YET VALIDATED | requires hardware calibration |
+| H-DRAM-001 | NUMA page placement and local/remote latency classification are correct, but DRAM-controller selection remains globally interleaved across all 16 controllers. Consequently, a workload whose pages reside entirely on one NUMA node can consume bandwidth from controllers belonging to both sockets. | VALIDATED | to be seen |

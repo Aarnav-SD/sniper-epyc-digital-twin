@@ -27,6 +27,10 @@ class AddressHomeLookup
       ~AddressHomeLookup();
       // Return home node for a given address
       core_id_t getHome(IntPtr address) const;
+      // Keeps generic AddressHomeLookup behavior unchanged unless enabled.
+      void enableNumaControllerRouting(
+         UInt32 num_numa_nodes, 
+         const std::vector<UInt64>& node_capacity_bytes);
       // Within home node, return unique, incrementing block number
       IntPtr getLinearBlock(IntPtr address) const;
       // Within home node, return unique, incrementing address to be used in cache set selection
@@ -38,6 +42,12 @@ class AddressHomeLookup
       std::vector<core_id_t> m_core_list;
       UInt32 m_total_modules;
       UInt32 m_cache_block_size;
+
+      bool m_numa_controller_routing;
+      UInt32 m_num_numa_nodes;
+
+      std::vector<UInt64> m_numa_node_start_addresses;
+      std::vector<UInt64> m_numa_node_end_addresses;
 };
 
 #endif /* __ADDRESS_HOME_LOOKUP_H__ */

@@ -402,6 +402,10 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
     if (cores_per_node == 0) cores_per_node = 1;
     
     m_core_to_node.resize(total_cores);
+
+    std::vector<UInt64> numa_node_capacities;
+    numa_node_capacities.reserve(m_num_numa_nodes);
+
     for (UInt32 c = 0; c < total_cores; ++c)
         m_core_to_node[c] = c / cores_per_node;
     
@@ -427,6 +431,8 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
         SInt64 default_capacity_gb = 64;
         node.capacity_bytes = getCfgIntSafe(node_path + "/capacity_gb", default_capacity_gb) 
                               * 1024ULL * 1024 * 1024;
+                            
+        numa_node_capacities.push_back(node.capacity_bytes);
         
         // Kernel reservation per node (for CPU-local apps)
         SInt64 default_kernel_gb = 8;
@@ -480,6 +486,11 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
                   node.kernel_reserved_bytes / (1024ULL * 1024 * 1024),
                   node.start_pfn, node.end_pfn, node.tier_id);
     }
+
+    address_home_lookup->enableNumaControllerRouting(
+        m_num_numa_nodes,
+        numa_node_capacities);
+    
 }
 
 UInt32 TieredDramCntlr::getNumaNodeForAddress(IntPtr address) const
