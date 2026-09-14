@@ -90,15 +90,21 @@ public:
         // Per-node statistics
         UInt64 reads;
         UInt64 writes;
+
         UInt64 local_accesses;          // Accesses from CPU-local core
+        UInt64 same_socket_remote_accesses;
+        UInt64 remote_socket_accesses;
+
         UInt64 remote_accesses;         // Accesses from remote cores
+
         SubsecondTime total_latency;
 
         NumaNodeInfo()
             : node_id(0), tier_id(0), perf_model(nullptr)
             , capacity_bytes(0), kernel_reserved_bytes(0)
             , start_pfn(0), end_pfn(0), hit_where(HitWhere::DRAM)
-            , reads(0), writes(0), local_accesses(0), remote_accesses(0)
+            , reads(0), writes(0), local_accesses(0), same_socket_remote_accesses(0)
+            , remote_socket_accesses(0), remote_accesses(0)
             , total_latency(SubsecondTime::Zero()) {}
     };
 
@@ -126,12 +132,23 @@ private:
     // Core-to-NUMA-node mapping (which cores are local to which node)
     std::vector<UInt32> m_core_to_node;   // core_id -> NUMA node_id
 
-    // NUMA remote access latency penalty (additive, in ns)
-    SubsecondTime m_numa_remote_latency;
+    // EPYC/NPS topology
+    UInt32 m_numa_nodes_per_socket;
+
+    // NUMA locality penalties
+    SubsecondTime m_numa_same_socket_remote_latency;
+    SubsecondTime m_numa_remote_socket_latency;
 
     // Per-NUMA-node statistics (aggregated)
     UInt64* m_numa_node_reads;
     UInt64* m_numa_node_writes;
+
+    enum NumaLocality
+    {
+        NUMA_LOCAL_NPS = 0,
+        NUMA_SAME_SOCKET_REMOTE = 1,
+        NUMA_REMOTE_SOCKET = 2
+    };
 
 public:
     TieredDramCntlr(MemoryManagerBase* memory_manager,
@@ -163,6 +180,10 @@ public:
     UInt32 getNumaNodeForAddress(IntPtr address) const;
     UInt32 getNumaNodeForCore(core_id_t core_id) const;
     bool isLocalAccess(core_id_t core_id, IntPtr address) const;
+    UInt32 getSocketForNumaNode(UInt32 numa_node) const;
+
+    NumaLocality getNumaLocality(core_id_t requester,
+                                UInt32 memory_node) const;
 
 private:
     void initializeTiers(core_id_t core_id, UInt32 cache_block_size, 

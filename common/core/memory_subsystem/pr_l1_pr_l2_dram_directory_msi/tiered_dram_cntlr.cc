@@ -56,7 +56,9 @@ TieredDramCntlr::TieredDramCntlr(MemoryManagerBase* memory_manager,
     , m_core_id(memory_manager->getCore()->getId())
     , m_numa_enabled(false)
     , m_num_numa_nodes(0)
-    , m_numa_remote_latency(SubsecondTime::Zero())
+    , m_numa_nodes_per_socket(1)
+    , m_numa_same_socket_remote_latency(SubsecondTime::Zero())
+    , m_numa_remote_socket_latency(SubsecondTime::Zero())
     , m_numa_node_reads(nullptr)
     , m_numa_node_writes(nullptr)
 {
@@ -338,16 +340,42 @@ TieredDramCntlr::runTieredDramPerfModel(core_id_t requester, SubsecondTime time,
             access_latency = m_numa_nodes[numa_node].perf_model->getAccessLatency(
                 time, pkt_size, requester, address, access_type, perf, is_metadata);
             
-            // Add remote access penalty if cross-node
-            bool is_local = isLocalAccess(requester, address);
-            if (!is_local)
+            NumaLocality locality =
+                getNumaLocality(requester, numa_node);
+
+            switch (locality)
             {
-                access_latency += m_numa_remote_latency;
-                m_numa_nodes[numa_node].remote_accesses++;
-            }
-            else
-            {
-                m_numa_nodes[numa_node].local_accesses++;
+                case NUMA_LOCAL_NPS:
+                {
+                    m_numa_nodes[numa_node].local_accesses++;
+                    break;
+                }
+
+                case NUMA_SAME_SOCKET_REMOTE:
+                {
+                    access_latency +=
+                        m_numa_same_socket_remote_latency;
+
+                    m_numa_nodes[numa_node].same_socket_remote_accesses++;
+
+                    // Preserve aggregate remote statistic
+                    m_numa_nodes[numa_node].remote_accesses++;
+
+                    break;
+                }
+
+                case NUMA_REMOTE_SOCKET:
+                {
+                    access_latency +=
+                        m_numa_remote_socket_latency;
+
+                    m_numa_nodes[numa_node].remote_socket_accesses++;
+
+                    // Preserve aggregate remote statistic
+                    m_numa_nodes[numa_node].remote_accesses++;
+
+                    break;
+                }
             }
             
             // Update per-node stats
@@ -390,9 +418,37 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
     
     m_numa_nodes.resize(m_num_numa_nodes);
     
-    // Remote access latency penalty (in ns, converted to SubsecondTime)
-    SInt64 remote_latency_ns = getCfgIntSafe("perf_model/dram/numa/remote_latency_ns", 40);
-    m_numa_remote_latency = SubsecondTime::NS(remote_latency_ns);
+    m_numa_nodes_per_socket =
+        getCfgIntSafe("perf_model/dram/numa/nodes_per_socket", 4);
+
+    if (m_numa_nodes_per_socket == 0)
+        m_numa_nodes_per_socket = 1;
+
+    // Initial calibration values derived from physical EPYC 7763 measurements.
+    // Keep these configurable; they are calibration parameters, not constants.
+    SInt64 same_socket_remote_ns =
+        getCfgIntSafe(
+            "perf_model/dram/numa/same_socket_remote_latency_ns",
+            9);
+
+    SInt64 remote_socket_ns =
+        getCfgIntSafe(
+            "perf_model/dram/numa/remote_socket_latency_ns",
+            90);
+
+    m_numa_same_socket_remote_latency =
+        SubsecondTime::NS(same_socket_remote_ns);
+
+    m_numa_remote_socket_latency =
+        SubsecondTime::NS(remote_socket_ns);
+
+    LOG_PRINT(
+        "NUMA topology: %u nodes, %u nodes/socket, "
+        "same-socket penalty=%ld ns, remote-socket penalty=%ld ns",
+        m_num_numa_nodes,
+        m_numa_nodes_per_socket,
+        same_socket_remote_ns,
+        remote_socket_ns);
     
     // Core-to-node mapping: default is round-robin
     // Config: perf_model/dram/numa/cores_per_node (default: total_cores / num_nodes)
@@ -407,7 +463,14 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
     numa_node_capacities.reserve(m_num_numa_nodes);
 
     for (UInt32 c = 0; c < total_cores; ++c)
-        m_core_to_node[c] = c / cores_per_node;
+    {
+        UInt32 node = c / cores_per_node;
+
+        if (node >= m_num_numa_nodes)
+            node = m_num_numa_nodes - 1;
+
+        m_core_to_node[c] = node;
+    }
     
     // Allocate per-node stats
     m_numa_node_reads = new UInt64[m_num_numa_nodes]();
@@ -468,8 +531,12 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
         // Initialize stats
         node.reads = 0;
         node.writes = 0;
+
         node.local_accesses = 0;
+        node.same_socket_remote_accesses = 0;
+        node.remote_socket_accesses = 0;
         node.remote_accesses = 0;
+
         node.total_latency = SubsecondTime::Zero();
         
         // Register per-NUMA-node statistics
@@ -477,6 +544,8 @@ void TieredDramCntlr::initializeNuma(core_id_t core_id, UInt32 cache_block_size,
         registerStatsMetric("dram", core_id, (node_name + "_reads").c_str(), &m_numa_node_reads[n]);
         registerStatsMetric("dram", core_id, (node_name + "_writes").c_str(), &m_numa_node_writes[n]);
         registerStatsMetric("dram", core_id, (node_name + "_local_accesses").c_str(), &node.local_accesses);
+        registerStatsMetric("dram", core_id, (node_name + "_same_socket_remote_accesses").c_str(), &node.same_socket_remote_accesses);
+        registerStatsMetric("dram", core_id, (node_name + "_remote_socket_accesses").c_str(), &node.remote_socket_accesses);
         registerStatsMetric("dram", core_id, (node_name + "_remote_accesses").c_str(), &node.remote_accesses);
         registerStatsMetric("dram", core_id, (node_name + "_total_latency").c_str(), &node.total_latency);
 
@@ -517,6 +586,42 @@ UInt32 TieredDramCntlr::getNumaNodeForCore(core_id_t core_id) const
         return m_core_to_node[core_id];
     
     return 0;
+}
+
+UInt32
+TieredDramCntlr::getSocketForNumaNode(UInt32 numa_node) const
+{
+    if (m_numa_nodes_per_socket == 0)
+        return 0;
+
+    return numa_node / m_numa_nodes_per_socket;
+}
+
+TieredDramCntlr::NumaLocality
+TieredDramCntlr::getNumaLocality(core_id_t requester,
+                                 UInt32 memory_node) const
+{
+    if (!m_numa_enabled || memory_node >= m_num_numa_nodes)
+        return NUMA_LOCAL_NPS;
+
+    UInt32 requester_node = getNumaNodeForCore(requester);
+
+    // Same NPS domain
+    if (requester_node == memory_node)
+        return NUMA_LOCAL_NPS;
+
+    UInt32 requester_socket =
+        getSocketForNumaNode(requester_node);
+
+    UInt32 memory_socket =
+        getSocketForNumaNode(memory_node);
+
+    // Different NPS domain but same socket
+    if (requester_socket == memory_socket)
+        return NUMA_SAME_SOCKET_REMOTE;
+
+    // Cross-socket
+    return NUMA_REMOTE_SOCKET;
 }
 
 bool TieredDramCntlr::isLocalAccess(core_id_t core_id, IntPtr address) const

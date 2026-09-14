@@ -39,15 +39,23 @@ static pthread_barrier_t barrier;
  *     core 0 initializes
  *     core 0 reads
  *
- * 1 = REMOTE0
+ * 1 = SAME_SOCKET0
+ *     core 16 initializes
+ *     core 0 reads
+ *
+ * 2 = REMOTE_SOCKET0
  *     core 64 initializes
  *     core 0 reads
  *
- * 2 = LOCAL1
+ * 3 = LOCAL1
  *     core 64 initializes
  *     core 64 reads
  *
- * 3 = REMOTE1
+ * 4 = SAME_SOCKET1
+ *     core 80 initializes
+ *     core 64 reads
+ *
+ * 5 = REMOTE_SOCKET1
  *     core 0 initializes
  *     core 64 reads
  */
@@ -85,10 +93,13 @@ static int is_initializer(int cpu)
 {
     switch (mode)
     {
-        case 0: return cpu == 0;   /* LOCAL0  */
-        case 1: return cpu == 64;  /* REMOTE0 */
-        case 2: return cpu == 64;  /* LOCAL1  */
-        case 3: return cpu == 0;   /* REMOTE1 */
+        case 0: return cpu == 0;   /* LOCAL0 */
+        case 1: return cpu == 16;  /* SAME_SOCKET0 */
+        case 2: return cpu == 64;  /* REMOTE_SOCKET0 */
+
+        case 3: return cpu == 64;  /* LOCAL1 */
+        case 4: return cpu == 80;  /* SAME_SOCKET1 */
+        case 5: return cpu == 0;   /* REMOTE_SOCKET1 */
     }
 
     return 0;
@@ -98,10 +109,13 @@ static int is_reader(int cpu)
 {
     switch (mode)
     {
-        case 0: return cpu == 0;   /* LOCAL0  */
-        case 1: return cpu == 0;   /* REMOTE0 */
-        case 2: return cpu == 64;  /* LOCAL1  */
-        case 3: return cpu == 64;  /* REMOTE1 */
+        case 0: return cpu == 0;
+        case 1: return cpu == 0;
+        case 2: return cpu == 0;
+
+        case 3: return cpu == 64;
+        case 4: return cpu == 64;
+        case 5: return cpu == 64;
     }
 
     return 0;
@@ -200,13 +214,23 @@ int main(int argc, char **argv)
     if (argc != 2)
     {
         fprintf(stderr,
-                "usage: %s <mode>\n"
-                "  0 = LOCAL0\n"
-                "  1 = REMOTE0\n"
-                "  2 = LOCAL1\n"
-                "  3 = REMOTE1\n",
-                argv[0]);
+            "usage: %s <mode>\n"
+            "  0 = LOCAL0\n"
+            "  1 = SAME_SOCKET0\n"
+            "  2 = REMOTE_SOCKET0\n"
+            "  3 = LOCAL1\n"
+            "  4 = SAME_SOCKET1\n"
+            "  5 = REMOTE_SOCKET1\n",
+            argv[0]);
 
+        return 1;
+    }
+
+    mode = atoi(argv[1]);
+
+    if (mode < 0 || mode > 5)
+    {
+        fprintf(stderr, "invalid mode\n");
         return 1;
     }
 
@@ -220,9 +244,11 @@ int main(int argc, char **argv)
 
     const char *names[] = {
         "LOCAL0",
-        "REMOTE0",
+        "SAME_SOCKET0",
+        "REMOTE_SOCKET0",
         "LOCAL1",
-        "REMOTE1"
+        "SAME_SOCKET1",
+        "REMOTE_SOCKET1"
     };
 
     size_t bytes =
@@ -252,34 +278,48 @@ int main(int argc, char **argv)
      * main + two workers do not all participate:
      * barrier only synchronizes the two worker threads.
      */
-    pthread_barrier_init(&barrier, NULL, 2);
+    pthread_barrier_init(&barrier, NULL, 4);
 
     pthread_t t0;
+    pthread_t t16;
     pthread_t t64;
+    pthread_t t80;
 
     ThreadArg a0  = { .cpu = 0 };
+    ThreadArg a16 = { .cpu = 16 };
     ThreadArg a64 = { .cpu = 64 };
+    ThreadArg a80 = { .cpu = 80 };
 
     int rc;
 
     rc = pthread_create(&t0, NULL, worker, &a0);
-    if (rc != 0)
-    {
-        fprintf(stderr, "pthread_create t0: %s\n",
-                strerror(rc));
+    if (rc != 0) {
+        fprintf(stderr, "pthread_create t0: %s\n", strerror(rc));
+        return 1;
+    }
+
+    rc = pthread_create(&t16, NULL, worker, &a16);
+    if (rc != 0) {
+        fprintf(stderr, "pthread_create t16: %s\n", strerror(rc));
         return 1;
     }
 
     rc = pthread_create(&t64, NULL, worker, &a64);
-    if (rc != 0)
-    {
-        fprintf(stderr, "pthread_create t64: %s\n",
-                strerror(rc));
+    if (rc != 0) {
+        fprintf(stderr, "pthread_create t64: %s\n", strerror(rc));
+        return 1;
+    }
+
+    rc = pthread_create(&t80, NULL, worker, &a80);
+    if (rc != 0) {
+        fprintf(stderr, "pthread_create t80: %s\n", strerror(rc));
         return 1;
     }
 
     pthread_join(t0, NULL);
+    pthread_join(t16, NULL);
     pthread_join(t64, NULL);
+    pthread_join(t80, NULL);
 
     pthread_barrier_destroy(&barrier);
     free(nodes);
