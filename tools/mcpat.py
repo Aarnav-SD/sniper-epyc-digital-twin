@@ -258,6 +258,24 @@ def main(jobid, resultsdir, outputfile, powertype = 'dynamic', config = None, no
         print('  %-12s    %6.2f W   %6.2f %sJ    %6.2f%%' % ('core', float(total_core), energy, energy_scale, 100 * float(total_core) / total))
         energy, energy_scale = sniper_lib.scale_sci(float(total_cache) * seconds)
         print('  %-12s    %6.2f W   %6.2f %sJ    %6.2f%%' % ('cache', float(total_cache), energy, energy_scale, 100 * float(total_cache) / total))
+
+        # EPYC digital-twin reporting:
+        # DRAM comes from Sniper's legacy DIMM power helper and is not yet
+        # calibrated to the physical EPYC 7763 node.
+        dram_power_value = 0.0
+        for name, value in res:
+          if name == 'dram':
+            dram_power_value += float(value)
+
+        cpu_side_total = float(total) - dram_power_value
+        energy, energy_scale = sniper_lib.scale_sci(cpu_side_total * seconds)
+        print('  %-12s    %6.2f W   %6.2f %sJ' %
+              ('cpu-side', cpu_side_total, energy, energy_scale))
+
+        if dram_power_value > 0:
+          print('  [WARN] DRAM %.2f W is from the legacy Sniper DRAM power model; not EPYC-calibrated.' %
+                dram_power_value)
+
         energy, energy_scale = sniper_lib.scale_sci(float(total) * seconds)
         print('  %-12s    %6.2f W   %6.2f %sJ    %6.2f%%' % ('total', float(total), energy, energy_scale, 100 * float(total) / total))
 
@@ -332,6 +350,46 @@ def edit_XML(statsobj, stats, cfg):
 
   ncores = int(cfg['general/total_cores'])
   technology_node = int(sniper_config.get_config_default(cfg, 'power/technology_node', 45))
+
+  # ------------------------------------------------------------------------
+  # Compatibility layer for newer Sniper cache-stat naming.
+  #
+  # Older McPAT integration expects:
+  #   L1-D.loads
+  #   L1-D.stores
+  #   L1-D.load-misses
+  #   L1-D.store-misses
+  #
+  # Newer Sniper separates normal data accesses from instruction and
+  # page-table traffic. For McPAT's architectural load/store counters,
+  # use the ordinary "-data" statistics.
+  # ------------------------------------------------------------------------
+  stat_aliases = {
+    # Data cache: ordinary architectural data accesses
+    'L1-D.loads':        'L1-D.loads-data',
+    'L1-D.stores':       'L1-D.stores-data',
+    'L1-D.load-misses':  'L1-D.load-misses-data',
+    'L1-D.store-misses': 'L1-D.store-misses-data',
+
+    # Instruction cache: ordinary instruction-fetch accesses
+    'L1-I.loads':        'L1-I.loads-instruction',
+    'L1-I.stores':       'L1-I.stores-instruction',
+    'L1-I.load-misses':  'L1-I.load-misses-instruction',
+    'L1-I.store-misses': 'L1-I.store-misses-instruction',
+
+    # New MMU/TLB statistics
+    'itlb.miss':         'mmu.tlb_misses_instruction',
+
+    # L2 cache: ordinary architectural data accesses
+    'L2.loads':           'L2.loads-data',
+    'L2.stores':          'L2.stores-data',
+    'L2.load-misses':     'L2.load-misses-data',
+    'L2.store-misses':    'L2.store-misses-data',
+  }
+
+  for old_name, new_name in stat_aliases.items():
+    if old_name not in stats and new_name in stats:
+      stats[old_name] = stats[new_name]
 
   l3_cacheSharedCores = int(sniper_config.get_config_default(cfg, 'perf_model/l3_cache/shared_cores', 0))
   l2_cacheSharedCores = int(sniper_config.get_config_default(cfg, 'perf_model/l2_cache/shared_cores', 0))
@@ -582,7 +640,9 @@ def edit_XML(statsobj, stats, cfg):
             elif 'network.shmem-1.bus.num-packets' in stats:
               template[i][0] = template[i][0] % int(stats['network.shmem-1.bus.num-packets'][0])  #assumption
             else:
-              template[i][0] = template[i][0] % int(stats['bus.num-requests'][0])  #assumption
+              # No compatible on-chip network statistics are exported by this
+              # CPU-node configuration. Do not fabricate NoC activity.
+              template[i][0] = template[i][0] % 0
           elif template[i][1][0]=="NoC.duty_cycle":
             if 'network.shmem-1.mesh.link-left.total-time-used' in stats:
               DIRECTIONS = ('up', 'down', 'left', 'right')
@@ -599,7 +659,9 @@ def edit_XML(statsobj, stats, cfg):
             elif 'network.shmem-1.bus.time-used' in stats:
               template[i][0] = template[i][0] % min(1, cycles_scale[core]*float(stats['network.shmem-1.bus.time-used'][0])/max_system_cycles)
             else:
-              template[i][0] = template[i][0] % min(1, cycles_scale[core]*float(stats['bus.time-used'][0])/max_system_cycles)
+              # No compatible on-chip network timing statistics are exported.
+              # Keep NoC dynamic activity disabled for this power-model run.
+              template[i][0] = template[i][0] % 0.0
           elif template[i][1][0]=="loads":
             template[i][0] = template[i][0] % int(stats['L1-D.loads'][core])
           elif template[i][1][0]=="stores":
