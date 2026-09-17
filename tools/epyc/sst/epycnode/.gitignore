@@ -1,0 +1,10 @@
+# SST build products
+*.so
+*.o
+
+# Simulation output
+*.log
+
+# Python
+__pycache__/
+*.pyc
