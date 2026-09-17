@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "sst_multijob_validation",
+  "description": "Deterministic two-job scenario for validating concurrent SST CPU-cluster runtime behavior",
+
+  "jobs": [
+    {
+      "job_id": "JOB_A",
+      "start_us": 10,
+      "duration_us": 100,
+      "num_nodes": 64,
+      "cores_per_node": 128,
+      "utilization": 1.0
+    },
+    {
+      "job_id": "JOB_B",
+      "start_us": 40,
+      "duration_us": 120,
+      "num_nodes": 16,
+      "cores_per_node": 64,
+      "utilization": 0.75
+    }
+  ]
+}

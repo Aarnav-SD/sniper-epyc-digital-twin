@@ -7,6 +7,12 @@ xed/
 tags
 tmp/
 *.json
+
+# Canonical digital-twin configuration manifests
+!configs/
+!configs/workloads/
+!configs/workloads/sst_runtime_validation.json
+!configs/workloads/sst_multijob_validation.json
 # emacs temp files
 *~
 
