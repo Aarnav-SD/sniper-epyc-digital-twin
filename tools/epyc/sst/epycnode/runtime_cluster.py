@@ -147,6 +147,15 @@ def create_cpu_node(global_index, rack_id, rack_type):
                 "active_cores": job["cores_per_node"],
                 "utilization": job["utilization"],
             })
+
+            # Optional scenario-level power backend.
+            power = workload.get("power", {})
+            if power:
+                params.update({
+                    "power_model": power["model"],
+                    "reference_power_w":
+                        power.get("reference_power_w", 88.48),
+                })
             break
 
         allocation_start = allocation_end

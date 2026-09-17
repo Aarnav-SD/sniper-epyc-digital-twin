@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "sst_multijob_validation",
   "description": "Deterministic two-job scenario for validating concurrent SST CPU-cluster runtime behavior",
-
   "jobs": [
     {
       "job_id": "JOB_A",
@@ -20,5 +19,10 @@
       "cores_per_node": 64,
       "utilization": 0.75
     }
-  ]
+  ],
+  "power": {
+    "model": "mcpat-reference",
+    "reference_power_w": 88.48,
+    "calibrated": false
+  }
 }

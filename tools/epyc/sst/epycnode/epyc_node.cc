@@ -46,6 +46,18 @@ EpycNode::EpycNode(SST::ComponentId_t id, SST::Params& params)
     utilization_     = params.find<double>("utilization", 0.0);
 
     // --------------------------------------------------------
+    // Power-model configuration
+    // --------------------------------------------------------
+
+    power_model_ = params.find<std::string>(
+        "power_model", "pending-calibration"
+    );
+
+    reference_power_w_ = params.find<double>(
+        "reference_power_w", 88.48
+    );
+
+    // --------------------------------------------------------
     // Runtime safety checks
     // --------------------------------------------------------
 
@@ -64,6 +76,21 @@ EpycNode::EpycNode(SST::ComponentId_t id, SST::Params& params)
     if (!job_id_.empty() && job_duration_us_ == 0) {
         throw std::runtime_error(
             node_id_ + ": non-empty job requires job_duration_us > 0"
+        );
+    }
+
+    if (
+        power_model_ != "pending-calibration" &&
+        power_model_ != "mcpat-reference"
+    ) {
+        throw std::runtime_error(
+            node_id_ + ": unsupported power_model: " + power_model_
+        );
+    }
+
+    if (reference_power_w_ < 0.0) {
+        throw std::runtime_error(
+            node_id_ + ": reference_power_w must be non-negative"
         );
     }
 
@@ -133,6 +160,27 @@ bool EpycNode::clockTick(SST::Cycle_t cycle)
             << "active_cores=" << active_cores_ << " "
             << "utilization=" << utilization_
             << std::endl;
+
+        if (power_model_ == "mcpat-reference") {
+            std::cout
+                << "[" << node_id_ << "] "
+                << "t=" << now_us << "us "
+                << "power_model=mcpat-reference "
+                << "power_w=" << reference_power_w_ << " "
+                << "status=REFERENCE_ONLY "
+                << "calibrated=false"
+                << std::endl;
+        }
+        else {
+            std::cout
+                << "[" << node_id_ << "] "
+                << "t=" << now_us << "us "
+                << "power_model=pending-calibration "
+                << "power_w=UNAVAILABLE "
+                << "status=PENDING "
+                << "calibrated=false"
+                << std::endl;
+        }
     }
 
     // --------------------------------------------------------

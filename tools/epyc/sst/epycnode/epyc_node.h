@@ -42,7 +42,10 @@ public:
         {"job_start_us",     "Job start time in microseconds",    "0"},
         {"job_duration_us",  "Job duration in microseconds",      "0"},
         {"active_cores",     "Active physical cores while running","0"},
-        {"utilization",      "Node utilization while running",    "0.0"}
+        {"utilization",      "Node utilization while running",    "0.0"},
+
+        {"power_model",      "Reduced-order node power backend",   "pending-calibration"},
+        {"reference_power_w","Raw CPU-side McPAT reference point", "88.48"}
     )
 
     EpycNode(SST::ComponentId_t id, SST::Params& params);
@@ -83,6 +86,18 @@ private:
 
     bool job_started_;
     bool job_completed_;
+
+    // Power-model interface.
+    //
+    // "pending-calibration":
+    //     no numerical wattage is produced.
+    //
+    // "mcpat-reference":
+    //     exposes the raw CPU-side McPAT reference point while RUNNING.
+    //     This value is diagnostic only and is NOT a calibrated physical
+    //     EPYC 7763 power prediction.
+    std::string power_model_;
+    double reference_power_w_;
 };
 
 } // namespace EpycTwin
