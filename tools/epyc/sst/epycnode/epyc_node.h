@@ -3,6 +3,7 @@
 
 #include <sst/core/component.h>
 #include <sst/core/params.h>
+#include <sst/core/timeConverter.h>
 
 #include <cstdint>
 #include <string>
@@ -35,12 +36,26 @@ public:
         {"l3_groups",        "Shared-L3 groups in node",          "16"},
         {"cores_per_l3",     "Physical cores per L3 group",       "8"},
         {"dram_controllers", "DRAM controllers in node",          "16"},
-        {"memory_gib",       "Installed node memory in GiB",      "512"}
+        {"memory_gib",       "Installed node memory in GiB",      "512"},
+
+        {"job_id",           "Synthetic workload identifier",     ""},
+        {"job_start_us",     "Job start time in microseconds",    "0"},
+        {"job_duration_us",  "Job duration in microseconds",      "0"},
+        {"active_cores",     "Active physical cores while running","0"},
+        {"utilization",      "Node utilization while running",    "0.0"}
     )
 
     EpycNode(SST::ComponentId_t id, SST::Params& params);
 
 private:
+    enum class RuntimeState {
+        IDLE,
+        RUNNING
+    };
+
+    bool clockTick(SST::Cycle_t cycle);
+
+    // Static hardware identity
     std::string node_id_;
     std::string rack_id_;
     std::string rack_type_;
@@ -56,6 +71,18 @@ private:
     uint32_t cores_per_l3_;
     uint32_t dram_controllers_;
     uint32_t memory_gib_;
+
+    // Runtime workload state
+    RuntimeState state_;
+
+    std::string job_id_;
+    uint64_t job_start_us_;
+    uint64_t job_duration_us_;
+    uint32_t active_cores_;
+    double utilization_;
+
+    bool job_started_;
+    bool job_completed_;
 };
 
 } // namespace EpycTwin
