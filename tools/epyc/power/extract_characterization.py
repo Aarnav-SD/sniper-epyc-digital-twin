@@ -86,29 +86,96 @@ def main():
         )
     )
 
-    cycle_vector = as_list(
+    elapsed_vector = as_list(
         get_stat(
             results,
-            "performance_model.cycle_count",
+            "performance_model.elapsed_time",
+        )
+    )
+
+    nonidle_elapsed_vector = as_list(
+        get_stat(
+            results,
+            "performance_model.nonidle_elapsed_time",
+        )
+    )
+
+    global_time_vector = as_list(
+        get_stat(
+            results,
+            "global.time",
         )
     )
 
     total_instructions = numeric_sum(instruction_vector)
-    total_cycles = numeric_sum(cycle_vector)
 
-    # Number of cores with any architectural instruction activity.
-    # Diagnostic only: this can include startup/helper activity.
-    instruction_active_cores = sum(
-        1 for x in instruction_vector
+    # Architectural instruction-active cores are used only to interpret
+    # Sniper execution statistics. This is intentionally distinct from
+    # args.active_cores, which records experimental workload parallelism.
+    instruction_active_indices = [
+        i for i, x in enumerate(instruction_vector)
         if float(x or 0) > 0
+    ]
+
+    instruction_active_cores = len(
+        instruction_active_indices
     )
 
     active_cores = args.active_cores
 
-    # IPC from Sniper's architectural instruction/cycle counters.
-    ipc = (
-        total_instructions / total_cycles
-        if total_cycles > 0
+    # Sniper time statistics are in femtoseconds.
+    duration_fs = max(
+        float(x or 0)
+        for x in global_time_vector
+    )
+
+    duration_s = (
+        duration_fs * 1e-15
+        if duration_fs > 0
+        else None
+    )
+
+    # McPAT derives per-core cycles from elapsed_time and the configured
+    # core frequency. Use the same timing semantics here.
+    frequency_hz = frequency_ghz * 1e9
+
+    active_core_cycles = 0.0
+    active_core_nonidle_cycles = 0.0
+
+    for i in instruction_active_indices:
+        if i < len(elapsed_vector):
+            active_core_cycles += (
+                float(elapsed_vector[i] or 0)
+                * 1e-15
+                * frequency_hz
+            )
+
+        if i < len(nonidle_elapsed_vector):
+            active_core_nonidle_cycles += (
+                float(nonidle_elapsed_vector[i] or 0)
+                * 1e-15
+                * frequency_hz
+            )
+
+    aggregate_active_ipc = (
+        total_instructions
+        / active_core_nonidle_cycles
+        if active_core_nonidle_cycles > 0
+        else None
+    )
+
+    active_core_utilization = (
+        active_core_nonidle_cycles
+        / active_core_cycles
+        if active_core_cycles > 0
+        else None
+    )
+
+    instruction_rate_gips = (
+        total_instructions
+        / duration_s
+        / 1e9
+        if duration_s and duration_s > 0
         else None
     )
 
@@ -199,8 +266,15 @@ def main():
             "active_cores": active_cores,
             "instruction_active_cores": instruction_active_cores,
             "total_instructions": total_instructions,
-            "total_cycles": total_cycles,
-            "ipc": ipc,
+            "duration_s": duration_s,
+            "instruction_rate_gips": instruction_rate_gips,
+            "active_core_cycles": active_core_cycles,
+            "active_core_nonidle_cycles":
+                active_core_nonidle_cycles,
+            "active_core_utilization":
+                active_core_utilization,
+            "aggregate_active_ipc":
+                aggregate_active_ipc,
         },
 
         "cache": {

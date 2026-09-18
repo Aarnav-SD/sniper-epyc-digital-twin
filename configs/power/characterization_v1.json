@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "description": "Curated v1 dataset for reduced-order CPU power-model development",
+  "runs": [
+    {
+      "run": "bw-both-2t-1787593031",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 2,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-both-4t-1787593111",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 4,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-both-8t-1787593209",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 8,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-both-16t-1787593368",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 16,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-both-32t-1787593678",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 32,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-both-64t-1787594328",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 64,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-both-128t-1787636837",
+      "workload": "bandwidth-both-sockets",
+      "active_cores": 128,
+      "tier": "POWER_BASELINE"
+    },
+
+    {
+      "run": "bw-s0-fixed-1t-1787469235",
+      "workload": "bandwidth-single-socket",
+      "active_cores": 1,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-s0-fixed-4t-1787469398",
+      "workload": "bandwidth-single-socket",
+      "active_cores": 4,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-s0-fixed-8t-1787469517",
+      "workload": "bandwidth-single-socket",
+      "active_cores": 8,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-s0-fixed-16t-1787469727",
+      "workload": "bandwidth-single-socket",
+      "active_cores": 16,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "bw-s0-fixed-64t-1787470858",
+      "workload": "bandwidth-single-socket",
+      "active_cores": 64,
+      "tier": "POWER_BASELINE"
+    },
+
+    {
+      "run": "stream-b0-s0-8t-8m-1789022330",
+      "workload": "stream",
+      "active_cores": 8,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "stream-b0-s0-32t-8m-1789044715",
+      "workload": "stream",
+      "active_cores": 32,
+      "tier": "POWER_BASELINE"
+    },
+    {
+      "run": "stream-b0-s0-64t-16m-1789141698",
+      "workload": "stream",
+      "active_cores": 64,
+      "tier": "POWER_BASELINE"
+    },
+
+    {
+      "run": "numa-lat-0-nps4-1789396700",
+      "workload": "numa-local",
+      "active_cores": 2,
+      "tier": "FINAL_NPS4"
+    },
+    {
+      "run": "numa-lat-1-nps4-1789398234",
+      "workload": "numa-same-socket-remote",
+      "active_cores": 2,
+      "tier": "FINAL_NPS4"
+    },
+    {
+      "run": "numa-lat-2-nps4-1789400190",
+      "workload": "numa-remote-socket",
+      "active_cores": 2,
+      "tier": "FINAL_NPS4"
+    }
+  ]
+}
