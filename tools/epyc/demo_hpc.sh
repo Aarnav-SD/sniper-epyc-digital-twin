@@ -4,7 +4,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLUSTER_DIR="$ROOT/tools/epyc/cluster"
+POWER_DIR="$ROOT/tools/epyc/power"
 SST_DIR="$ROOT/tools/epyc/sst/epycnode"
+POWER_MODEL="$ROOT/configs/power/cpu_power_model_v1.json"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -60,6 +62,7 @@ echo "  128 physical cores/node"
 echo "  NPS4: 8 NUMA domains/node"
 echo "  16 shared-L3 groups/node"
 echo "  16 DRAM controllers/node"
+
 echo
 echo "Reference cluster:"
 echo "  13 racks"
@@ -70,7 +73,7 @@ echo "  53,760 physical CPU cores"
 # 1. Manifest consistency
 # ----------------------------------------------------------------------
 
-section "[1/7] HARDWARE AND CLUSTER MANIFESTS"
+section "[1/8] HARDWARE AND CLUSTER MANIFESTS"
 
 run_test \
     "Cluster manifest consistency" \
@@ -80,7 +83,7 @@ run_test \
 # 2. Object model
 # ----------------------------------------------------------------------
 
-section "[2/7] 420-NODE CPU COMPUTE-SUBSYSTEM MODEL"
+section "[2/8] 420-NODE CPU COMPUTE-SUBSYSTEM MODEL"
 
 run_test \
     "CPU compute-subsystem object model" \
@@ -90,27 +93,45 @@ run_test \
 # 3. Runtime model
 # ----------------------------------------------------------------------
 
-section "[3/7] MULTI-NODE RUNTIME MODEL"
+section "[3/8] MULTI-NODE RUNTIME MODEL"
 
 run_test \
     "Independent multi-node workload allocation" \
     python3 "$CLUSTER_DIR/validate_cluster_runtime.py"
 
 # ----------------------------------------------------------------------
-# 4. Power interface
+# 4. Calibration-safe power interface
 # ----------------------------------------------------------------------
 
-section "[4/7] REDUCED-ORDER POWER INTERFACE"
+section "[4/8] REDUCED-ORDER POWER INTERFACE"
 
 run_test \
     "Calibration-safe power-model interface" \
     python3 "$CLUSTER_DIR/validate_power_interface.py"
 
 # ----------------------------------------------------------------------
-# 5. SST environment/component
+# 5. Frozen Sniper -> McPAT surrogate artifact
 # ----------------------------------------------------------------------
 
-section "[5/7] SST ENVIRONMENT"
+section "[5/8] SNIPER-MCPAT CPU POWER SURROGATE"
+
+if [[ -f "$POWER_MODEL" ]]; then
+    pass "Frozen CPU power-model artifact available"
+else
+    fail "Frozen CPU power-model artifact available"
+fi
+
+run_test \
+    "Reduced-order CPU surrogate evaluation" \
+    python3 "$POWER_DIR/evaluate_model.py" \
+        "$POWER_MODEL" \
+        --instruction-rate-gips 25.187
+
+# ----------------------------------------------------------------------
+# 6. SST environment/component
+# ----------------------------------------------------------------------
+
+section "[6/8] SST ENVIRONMENT"
 
 if command -v sst >/dev/null 2>&1; then
     SST_VERSION="$(sst --version 2>/dev/null | head -n 1)"
@@ -133,10 +154,10 @@ else
 fi
 
 # ----------------------------------------------------------------------
-# 6. Full 420-node SST runtime
+# 7. Full 420-node workload-sensitive SST execution
 # ----------------------------------------------------------------------
 
-section "[6/7] FULL 420-NODE SST MULTI-JOB EXECUTION"
+section "[7/8] FULL 420-NODE WORKLOAD-SENSITIVE SST EXECUTION"
 
 SST_LOG="$(mktemp)"
 trap 'rm -f "$SST_LOG"' EXIT
@@ -156,19 +177,45 @@ if command -v sst >/dev/null 2>&1 && \
         grep -c 'state=IDLE job=.* completed' "$SST_LOG" || true
     )"
 
-    POWER_REPORTS="$(
-        grep -c 'status=REFERENCE_ONLY' "$SST_LOG" || true
+    SURROGATE_REPORTS="$(
+        grep -c 'power_model=mcpat-surrogate-v1' "$SST_LOG" || true
     )"
 
     UNSAFE_CALIBRATED="$(
         grep -c 'calibrated=true' "$SST_LOG" || true
     )"
 
+    JOB_A_POWER="$(
+        grep -c \
+            'job=JOB_A.*' "$SST_LOG" || true
+    )"
+
+    JOB_B_POWER="$(
+        grep -c \
+            'job=JOB_B.*' "$SST_LOG" || true
+    )"
+
+    JOB_A_SURROGATE="$(
+        grep -c \
+            'power_model=mcpat-surrogate-v1 power_w=101.068 status=REFERENCE_ONLY calibrated=false' \
+            "$SST_LOG" || true
+    )"
+
+    JOB_B_SURROGATE="$(
+        grep -c \
+            'power_model=mcpat-surrogate-v1 power_w=95.1022 status=REFERENCE_ONLY calibrated=false' \
+            "$SST_LOG" || true
+    )"
+
     echo "Initialized CPU nodes:        $INITIALIZED"
     echo "RUNNING transitions:          $RUNNING"
     echo "Job completions:              $COMPLETED"
-    echo "Reference-power reports:      $POWER_REPORTS"
+    echo "Surrogate-power reports:      $SURROGATE_REPORTS"
     echo "Unsafe calibrated claims:     $UNSAFE_CALIBRATED"
+    echo "JOB_A runtime records:        $JOB_A_POWER"
+    echo "JOB_B runtime records:        $JOB_B_POWER"
+    echo "JOB_A 101.068 W reports:      $JOB_A_SURROGATE"
+    echo "JOB_B 95.1022 W reports:      $JOB_B_SURROGATE"
 
     if [[ "$INITIALIZED" -eq 420 ]]; then
         pass "420 SST CPU nodes instantiated"
@@ -182,10 +229,18 @@ if command -v sst >/dev/null 2>&1 && \
         fail "Manifest-driven concurrent jobs executed"
     fi
 
-    if [[ "$POWER_REPORTS" -eq 80 && "$UNSAFE_CALIBRATED" -eq 0 ]]; then
-        pass "Runtime-to-power propagation"
+    if [[ "$SURROGATE_REPORTS" -eq 80 && \
+          "$UNSAFE_CALIBRATED" -eq 0 ]]; then
+        pass "Surrogate power propagated into SST"
     else
-        fail "Runtime-to-power propagation"
+        fail "Surrogate power propagated into SST"
+    fi
+
+    if [[ "$JOB_A_SURROGATE" -eq 64 && \
+          "$JOB_B_SURROGATE" -eq 16 ]]; then
+        pass "Workload-sensitive per-node power differentiated"
+    else
+        fail "Workload-sensitive per-node power differentiated"
     fi
 
 else
@@ -196,13 +251,13 @@ else
 fi
 
 # ----------------------------------------------------------------------
-# 7. Time-resolved power aggregation
+# 8. Time-resolved power aggregation
 # ----------------------------------------------------------------------
 
-section "[7/7] TIME-RESOLVED CLUSTER POWER PIPELINE"
+section "[8/8] TIME-RESOLVED CLUSTER CPU POWER PIPELINE"
 
 run_test \
-    "Reference-only cluster power timeline" \
+    "Workload-sensitive reference-only cluster power timeline" \
     python3 "$SST_DIR/validate_power_timeline.py"
 
 # ----------------------------------------------------------------------
@@ -219,7 +274,10 @@ echo "Current scope status:"
 echo "  CPU compute subsystem        IMPLEMENTED"
 echo "  420-node SST representation  IMPLEMENTED"
 echo "  Multi-job runtime            IMPLEMENTED"
-echo "  Runtime-to-power pipeline    IMPLEMENTED"
+echo "  Sniper-McPAT characterization IMPLEMENTED"
+echo "  Reduced-order CPU surrogate  IMPLEMENTED"
+echo "  Workload-sensitive SST power IMPLEMENTED"
+echo "  Cluster CPU power timeline   IMPLEMENTED"
 echo "  Physical EPYC calibration    PENDING"
 echo "  GPU subsystem                FUTURE"
 echo "  InfiniBand network           FUTURE"
@@ -227,10 +285,27 @@ echo "  Lustre storage               FUTURE"
 echo "  PBS Pro scheduler            FUTURE"
 
 echo
+echo "Current validation scenario:"
+echo "  JOB_A: 64 nodes, 25.187 GIPS/profile"
+echo "         101.0680 W/node CPU-side reference estimate"
+echo "  JOB_B: 16 nodes, 12.732 GIPS/profile"
+echo "          95.1022 W/node CPU-side reference estimate"
+echo "  Peak active CPU-side reference power: 7989.98 W"
+echo "  Active-interval CPU-side reference energy: 0.829431 J"
+
+echo
 echo "Power-model interpretation:"
-echo "  McPAT wattage is REFERENCE_ONLY and calibrated=false."
-echo "  It must not be interpreted as physical EPYC 7763 power."
-echo "  Idle platform power is not yet numerically modeled."
+echo "  Workload activity originates from Sniper characterization."
+echo "  CPU-side reference targets originate from McPAT."
+echo "  SST uses the frozen reduced-order surrogate rather than"
+echo "  executing a full Sniper/McPAT instance for every node."
+echo "  Surrogate wattage and energy are REFERENCE_ONLY."
+echo "  physical_calibrated=false."
+echo "  McPAT uses the 22 nm compatibility configuration;"
+echo "  these values are not absolute 7 nm EPYC power predictions."
+echo "  Legacy Sniper DRAM power is excluded from this CPU model."
+echo "  Idle-node/platform power is unavailable and is not included"
+echo "  in the numerical cluster aggregate."
 
 echo
 line
