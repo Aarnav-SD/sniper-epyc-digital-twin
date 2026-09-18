@@ -81,7 +81,8 @@ EpycNode::EpycNode(SST::ComponentId_t id, SST::Params& params)
 
     if (
         power_model_ != "pending-calibration" &&
-        power_model_ != "mcpat-reference"
+        power_model_ != "mcpat-reference" &&
+        power_model_ != "mcpat-surrogate-v1"
     ) {
         throw std::runtime_error(
             node_id_ + ": unsupported power_model: " + power_model_
@@ -161,11 +162,14 @@ bool EpycNode::clockTick(SST::Cycle_t cycle)
             << "utilization=" << utilization_
             << std::endl;
 
-        if (power_model_ == "mcpat-reference") {
+        if (
+            power_model_ == "mcpat-reference" ||
+            power_model_ == "mcpat-surrogate-v1"
+        ) {
             std::cout
                 << "[" << node_id_ << "] "
                 << "t=" << now_us << "us "
-                << "power_model=mcpat-reference "
+                << "power_model=" << power_model_ << " "
                 << "power_w=" << reference_power_w_ << " "
                 << "status=REFERENCE_ONLY "
                 << "calibrated=false"

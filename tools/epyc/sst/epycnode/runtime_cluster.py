@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 import os
 import sst
@@ -67,6 +68,70 @@ if cluster["cpu_compute"]["node_type"] != hardware["id"]:
         "Cluster CPU node type does not match hardware manifest: "
         f'{cluster["cpu_compute"]["node_type"]} != {hardware["id"]}'
     )
+
+
+# ------------------------------------------------------------
+# Reduced-order CPU power surrogate
+# ------------------------------------------------------------
+
+def evaluate_cpu_power_surrogate(power_config, job):
+    if power_config["model"] != "mcpat-surrogate-v1":
+        raise RuntimeError(
+            "Unsupported surrogate power model: "
+            f'{power_config["model"]}'
+        )
+
+    model_path = Path(SNIPER_ROOT) / power_config["model_file"]
+
+    with model_path.open() as f:
+        model = json.load(f)
+
+    if model["model_id"] != "epyc7763_mcpat_cpu_surrogate_v1":
+        raise RuntimeError(
+            "Unexpected CPU power model: "
+            f'{model["model_id"]}'
+        )
+
+    if model["target"]["physical_calibrated"]:
+        raise RuntimeError(
+            "Reference surrogate must not claim physical calibration"
+        )
+
+    activity = job.get("activity")
+
+    if not activity:
+        raise RuntimeError(
+            f'{job["job_id"]}: mcpat-surrogate-v1 requires '
+            "an explicit activity profile"
+        )
+
+    if activity.get("source") != "sniper-characterization":
+        raise RuntimeError(
+            f'{job["job_id"]}: unsupported activity source'
+        )
+
+    rate = float(activity["instruction_rate_gips"])
+
+    domain = model["training_domain"]
+    rate_min = float(domain["instruction_rate_gips_min"])
+    rate_max = float(domain["instruction_rate_gips_max"])
+
+    if not rate_min <= rate <= rate_max:
+        raise RuntimeError(
+            f'{job["job_id"]}: instruction rate {rate} GIPS '
+            f'outside surrogate training domain '
+            f'[{rate_min}, {rate_max}] GIPS'
+        )
+
+    eq = model["equation"]
+
+    power_w = (
+        float(eq["intercept_w"])
+        + float(eq["instruction_rate_gips_coefficient"])
+        * rate
+    )
+
+    return power_w
 
 
 # ------------------------------------------------------------
@@ -150,11 +215,37 @@ def create_cpu_node(global_index, rack_id, rack_type):
 
             # Optional scenario-level power backend.
             power = workload.get("power", {})
+
             if power:
+                power_model = power["model"]
+
+                if power_model == "mcpat-surrogate-v1":
+                    reference_power_w = (
+                        evaluate_cpu_power_surrogate(
+                            power,
+                            job,
+                        )
+                    )
+
+                elif power_model == "mcpat-reference":
+                    reference_power_w = power.get(
+                        "reference_power_w",
+                        88.48,
+                    )
+
+                elif power_model == "pending-calibration":
+                    reference_power_w = 0.0
+
+                else:
+                    raise RuntimeError(
+                        "Unsupported power model: "
+                        f"{power_model}"
+                    )
+
                 params.update({
-                    "power_model": power["model"],
+                    "power_model": power_model,
                     "reference_power_w":
-                        power.get("reference_power_w", 88.48),
+                        reference_power_w,
                 })
             break
 

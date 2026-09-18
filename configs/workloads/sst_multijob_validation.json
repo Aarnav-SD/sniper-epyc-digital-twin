@@ -9,7 +9,12 @@
       "duration_us": 100,
       "num_nodes": 64,
       "cores_per_node": 128,
-      "utilization": 1.0
+      "utilization": 1.0,
+      "activity": {
+        "source": "sniper-characterization",
+        "profile": "bandwidth-both-sockets-128",
+        "instruction_rate_gips": 25.187
+      }
     },
     {
       "job_id": "JOB_B",
@@ -17,12 +22,17 @@
       "duration_us": 120,
       "num_nodes": 16,
       "cores_per_node": 64,
-      "utilization": 0.75
+      "utilization": 0.75,
+      "activity": {
+        "source": "sniper-characterization",
+        "profile": "bandwidth-single-socket-64",
+        "instruction_rate_gips": 12.732
+      }
     }
   ],
   "power": {
-    "model": "mcpat-reference",
-    "reference_power_w": 88.48,
+    "model": "mcpat-surrogate-v1",
+    "model_file": "configs/power/cpu_power_model_v1.json",
     "calibrated": false
   }
 }
