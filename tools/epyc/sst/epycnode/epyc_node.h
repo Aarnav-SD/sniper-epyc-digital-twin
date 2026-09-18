@@ -93,9 +93,15 @@ private:
     //     no numerical wattage is produced.
     //
     // "mcpat-reference":
-    //     exposes the raw CPU-side McPAT reference point while RUNNING.
-    //     This value is diagnostic only and is NOT a calibrated physical
-    //     EPYC 7763 power prediction.
+    //     exposes a fixed raw CPU-side McPAT reference point.
+    //
+    // "mcpat-surrogate-v1":
+    //     exposes a workload-sensitive CPU-side McPAT surrogate estimate
+    //     evaluated by the Python SST configuration layer from an explicit
+    //     Sniper-derived activity profile.
+    //
+    // Both McPAT-backed values are REFERENCE_ONLY and are NOT calibrated
+    // physical EPYC 7763 power predictions.
     std::string power_model_;
     double reference_power_w_;
 };
