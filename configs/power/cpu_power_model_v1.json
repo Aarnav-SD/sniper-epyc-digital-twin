@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "model_id": "epyc7763_mcpat_cpu_surrogate_v1",
+  "model_type": "linear_instruction_rate",
+
+  "target": {
+    "quantity": "cpu_side_power",
+    "unit": "W",
+    "source": "McPAT",
+    "technology_node_nm": 22,
+    "status": "REFERENCE_ONLY",
+    "physical_calibrated": false,
+    "legacy_sniper_dram_excluded": true
+  },
+
+  "features": [
+    {
+      "name": "instruction_rate_gips",
+      "unit": "GIPS",
+      "definition": "Total architectural instructions divided by Sniper global simulated duration."
+    }
+  ],
+
+  "equation": {
+    "form": "intercept_w + instruction_rate_gips_coefficient * instruction_rate_gips",
+    "intercept_w": 89.00376224,
+    "instruction_rate_gips_coefficient": 0.47898504
+  },
+
+  "training": {
+    "dataset": "characterization_v1",
+    "observations": 18,
+    "workload_families": 6,
+    "target_min_w": 88.44,
+    "target_max_w": 100.95,
+    "target_span_w": 12.51
+  },
+
+  "validation": {
+    "method": "leave-one-workload-family-out",
+    "mae_w": 1.157,
+    "rmse_w": 1.432,
+    "mape_pct": 1.218
+  },
+
+  "training_domain": {
+    "instruction_rate_gips_min": 0.1071715991,
+    "instruction_rate_gips_max": 25.187,
+    "active_cores_min": 1,
+    "active_cores_max": 128,
+    "workload_character": "Memory-oriented characterization set containing bandwidth, STREAM, and NUMA pointer-chase experiments."
+  },
+
+  "limitations": [
+    "This model predicts an uncalibrated McPAT CPU-side reference estimate, not physical EPYC 7763 power.",
+    "McPAT uses a 22 nm compatibility configuration because McPAT 1.0 does not support the EPYC 7763 7 nm process.",
+    "The legacy Sniper DRAM power estimate is excluded from the target.",
+    "The model has not been validated on arbitrary compute-intensive HPC applications.",
+    "Physical R6525 telemetry calibration is pending."
+  ]
+}
